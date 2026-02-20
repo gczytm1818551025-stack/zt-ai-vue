@@ -36,6 +36,8 @@
         <ChatInput
           :generating="generating"
           v-model:reactMode="reactMode"
+          :can-switch-mode="canSwitchMode"
+          :can-send="canSend"
           @send="onSendMessage"
           @stop="onStopGeneration"
         />
@@ -45,7 +47,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, nextTick, computed, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted, nextTick, computed, onBeforeUnmount, watch } from 'vue'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -59,6 +61,7 @@ import EmptyState from '@/components/empty/EmptyState.vue'
 // 逻辑 Hooks
 import { useChatSession } from '@/api/composables/useChatSession'
 import { useChatStream } from '@/api/composables/useChatStream'
+import { SessionTypeEnum } from '@/store/sessionTypeCache'
 
 const store = useStore()
 const router = useRouter()
@@ -68,6 +71,8 @@ const lastScrollPosition = ref(0)
 
 // ReAct 模式状态
 const reactMode = ref(false)
+// 当前会话类型
+const currentSessionType = ref(null)
 
 // 用户信息
 const username = computed(() => store.state.userInfo?.nickName || '用户')
@@ -79,26 +84,48 @@ const currentSessionTitle = computed(() => {
   return session ? session.title : ''
 })
 
+// ===== 核心业务逻辑 =====
+
+// 是否可以切换模式（始终允许切换）
+const canSwitchMode = computed(() => true)
+
+// 是否可以发送消息（始终允许）
+const canSend = computed(() => {
+  // 1. 如果没有会话，可以发送
+  if (!currentSessionId.value) return true
+
+  // 2. 统一逻辑：始终允许发送消息
+  return true
+})
+
+// Agent会话是否已完成
+const isAgentSessionCompleted = computed(() => {
+  return currentSessionType.value === SessionTypeEnum.AGENT && hasMessages.value
+})
+
 // 引入逻辑 Hook
-const { 
-  sessionList, 
-  currentSessionId, 
-  loading, 
-  loadSessionList, 
-  handleCreateSession, 
+const {
+  sessionList,
+  currentSessionId,
+  loading,
+  loadSessionList,
+  handleCreateSession,
   fetchSessionDetail,
   handleRenameSession,
   handleDeleteSession
 } = useChatSession()
 
-const { 
-  generating, 
-  startChat, 
-  stopGeneration 
+const {
+  generating,
+  startChat,
+  stopGeneration
 } = useChatStream()
 
 // 当前消息列表
 const messages = ref([])
+
+// 会话是否已开始（是否有消息）
+const hasMessages = ref(false)
 
 // 滚动事件处理
 const handleScroll = () => {
@@ -115,18 +142,17 @@ const handleScroll = () => {
 
 // 初始化
 onMounted(async () => {
-  // if (!store.getters.isLoggedIn) {
-  //   ElMessage.warning('请先登录')
-  //   router.push('/login')
-  //   return
-  // }
-
   // 只加载会话列表，不自动选择或创建会话
   await loadSessionList()
-  
+
   // 保持当前会话ID为空，显示空白对话界面
   currentSessionId.value = ''
   messages.value = []
+  hasMessages.value = false
+
+  // 重置 React 模式和会话类型状态（修复刷新后状态残留问题）
+  reactMode.value = false
+  currentSessionType.value = null
 })
 
 // 滚动到底部
@@ -146,17 +172,21 @@ const onCreateSession = async () => {
   if (generating.value) {
     await onStopGeneration()
   }
-  
+
   // 如果当前没有sessionId，刷新页面
   if (!currentSessionId.value) {
     // 刷新页面以实现重置效果
     window.location.reload()
   } else {
     // 如果持有sessionId，实际调用新建会话接口
-    const newSession = await handleCreateSession()
+    const type = reactMode.value ? SessionTypeEnum.AGENT : SessionTypeEnum.CHAT
+    const newSession = await handleCreateSession(type)
     if (newSession) {
       currentSessionId.value = newSession.sessionId
+      currentSessionType.value = newSession.sessionType
+      reactMode.value = newSession.sessionType === SessionTypeEnum.AGENT
       messages.value = [] // 新会话初始为空
+      hasMessages.value = false
       scrollToBottom()
     }
   }
@@ -170,10 +200,53 @@ const onSelectSession = async (session) => {
   if (generating.value) {
     await onStopGeneration()
   }
-  
+
   currentSessionId.value = session.sessionId
+  currentSessionType.value = session.sessionType
+  reactMode.value = session.sessionType === SessionTypeEnum.AGENT
   messages.value = await fetchSessionDetail(session.sessionId)
+  hasMessages.value = messages.value.length > 0
+
+  // 如果会话正在进行，尝试恢复连接
+  if (session.isActive) {
+    await resumeActiveSession(session)
+  }
+
   scrollToBottom()
+}
+
+// 恢复正在进行的会话
+const resumeActiveSession = async (session) => {
+  try {
+    // 检查是否已经有 AI 消息（正在进行的会话可能没有历史消息）
+    const lastMessage = messages.value[messages.value.length - 1]
+    let aiMessageRef
+
+    if (lastMessage && lastMessage.role === 'server' && !lastMessage.content) {
+      // 使用已有的空消息
+      aiMessageRef = lastMessage
+    } else {
+      // 创建新的 AI 占位消息
+      aiMessageRef = reactive({ role: 'server', content: '', steps: [] })
+      messages.value.push(aiMessageRef)
+    }
+
+    // 重新建立连接（chatType=2 表示恢复模式）
+    await startChat(
+      session.sessionId,
+      '', // question 为空，因为是恢复连接
+      aiMessageRef,
+      scrollToBottom,
+      () => {}, // 完成回调
+      2, // chatType: 2-恢复连接
+      true // reactMode
+    )
+
+    ElMessage.info('已恢复之前的对话')
+  } catch (error) {
+    console.error('恢复会话失败:', error)
+    ElMessage.warning('恢复会话失败，请重试')
+  }
 }
 
 // 3. 重命名
@@ -186,7 +259,6 @@ const onDeleteSession = async (session) => {
   ElMessageBox.confirm('确定要删除这个会话吗？', '确认删除', {
     confirmButtonText: '确认',
     cancelButtonText: '取消',
-    type: 'warning',
     confirmButtonClass: 'custom-confirm-btn'
   })
     .then(async () => {
@@ -196,6 +268,7 @@ const onDeleteSession = async (session) => {
             // 如果删除了当前会话，重置为空白默认对话界面
             currentSessionId.value = ''
             messages.value = []
+            hasMessages.value = false
         }
       }
     })
@@ -204,11 +277,18 @@ const onDeleteSession = async (session) => {
 
 // 5. 发送消息
 const onSendMessage = async (text) => {
+  // 检查是否可以发送
+  if (!canSend.value) {
+    return
+  }
+
   // 懒创建：如果当前没有会话ID，说明是新会话，此时才调用后端创建
   if (!currentSessionId.value) {
-    const newSession = await handleCreateSession()
+    const type = reactMode.value ? SessionTypeEnum.AGENT : SessionTypeEnum.CHAT
+    const newSession = await handleCreateSession(type)
     if (newSession) {
       currentSessionId.value = newSession.sessionId
+      currentSessionType.value = newSession.sessionType
     } else {
       // 创建失败，停止发送
       return
@@ -220,7 +300,11 @@ const onSendMessage = async (text) => {
   scrollToBottom()
 
   // 添加 AI 占位消息
-  const aiMessage = reactive({ role: 'server', content: '' })
+  const aiMessage = reactive({
+    role: 'server',
+    content: '',
+    steps: []
+  })
   messages.value.push(aiMessage)
 
   // 开始流式对话，对话完成后更新会话标题，传递 reactMode 参数
@@ -239,16 +323,21 @@ const onStopGeneration = async () => {
 
 // 7. 重新生成 (简单实现：删除最后一条 AI 消息，重发上一条用户消息)
 const onRegenerate = async () => {
+  // 支持普通模式和 Agent 模式的重新生成
   if (messages.value.length < 2) return
-  
+
   const lastMsg = messages.value[messages.value.length - 1]
   const userMsg = messages.value[messages.value.length - 2]
-  
+
   if (lastMsg.role === 'server' && userMsg.role === 'user') {
     messages.value.pop() // 移除 AI 消息
     const text = userMsg.content
     // 重发逻辑：不需要再添加用户消息，直接添加 AI 占位并请求
-    const aiMessage = reactive({ role: 'server', content: '' })
+    const aiMessage = reactive({
+      role: 'server',
+      content: '',
+      steps: []
+    })
     messages.value.push(aiMessage)
     // 对话完成后更新会话标题
     await startChat(currentSessionId.value, text, aiMessage, scrollToBottom, async () => {
@@ -318,6 +407,19 @@ const onLogout = () => {
   box-shadow: none;
   overflow: hidden;
   z-index: 1;
+}
+
+/* Agent 完成提示样式 */
+.agent-completed-tip {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 12px 16px;
+  background: var(--color-background-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-sm);
+  text-align: center;
 }
 
 

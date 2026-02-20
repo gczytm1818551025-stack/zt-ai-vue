@@ -4,14 +4,15 @@
     :class="{
       'active': isActive,
       'editing': isEditing,
-      'collapsed': isCollapsed
+      'collapsed': isCollapsed,
+      'pulse-active': isActive && isAgent
     }"
     @click="$emit('select')"
   >
     <!-- 展开状态下显示内容 -->
     <div class="item-content" v-if="!isCollapsed">
       <!-- 编辑模式 -->
-      <div v-if="isEditing" class="edit-wrapper" @click.stop>
+      <div v-if="isEditing" class="edit-wrapper" @click.stop ref="editWrapperRef">
         <el-input
           v-model="editTitle"
           size="small"
@@ -35,7 +36,7 @@
 </template>
 
 <script setup>
-import { ref, nextTick, watch, computed } from 'vue'
+import { ref, nextTick, watch, computed, onUnmounted } from 'vue'
 import { Edit, Delete } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -45,10 +46,13 @@ const props = defineProps({
   isCollapsed: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['select', 'start-edit', 'rename', 'delete'])
+const isAgent = computed(() => props.session?.sessionType === 'AGENT')
+
+const emit = defineEmits(['select', 'start-edit', 'rename', 'delete', 'finish-edit'])
 
 const editTitle = ref('')
 const editInputRef = ref(null)
+const editWrapperRef = ref(null)
 
 // 监听 session 变化，同步 editTitle
 watch(() => props.session, (newSession) => {
@@ -63,9 +67,31 @@ const confirmEdit = () => {
   if (props.isEditing) {
     if (editTitle.value !== props.session.title) {
       emit('rename', editTitle.value)
+    } else {
+      emit('finish-edit')
     }
   }
 }
+
+const handleClickOutside = (event) => {
+  if (editWrapperRef.value && !editWrapperRef.value.contains(event.target)) {
+    confirmEdit()
+  }
+}
+
+watch(() => props.isEditing, (newValue) => {
+  if (newValue) {
+    nextTick(() => {
+      document.addEventListener('mousedown', handleClickOutside, true)
+    })
+  } else {
+    document.removeEventListener('mousedown', handleClickOutside, true)
+  }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('mousedown', handleClickOutside, true)
+})
 
 // 暴露方法供父组件调用
 defineExpose({
@@ -81,9 +107,9 @@ defineExpose({
 .session-item {
   display: flex;
   align-items: center;
-  padding: var(--space-xs) var(--space-md);
+  padding: var(--space-sm) var(--space-lg);
   margin-bottom: var(--space-xs);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   cursor: pointer;
   color: var(--color-text-primary);
   position: relative;
@@ -144,7 +170,8 @@ defineExpose({
 }
 
 .session-item.active .item-actions {
-  background: linear-gradient(to right, transparent 0%, var(--color-background-soft) 30%, var(--color-background-soft) 100%);
+  display: flex;
+  animation: fadeIn 0.3s ease;
 }
 
 .session-item:hover .item-actions {
@@ -171,12 +198,6 @@ defineExpose({
   transform: scale(1.15);
 }
 
-.delete-icon:hover {
-  color: var(--color-danger);
-  background: rgba(239, 68, 68, 0.1);
-}
-
-/* 编辑模式样式 */
 .edit-wrapper {
   width: 100%;
   padding: 0 4px;
@@ -188,7 +209,7 @@ defineExpose({
 }
 
 .edit-wrapper :deep(.el-input__wrapper) {
-  background: var(--color-background-soft);
+  background: var(--color-background);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   box-shadow: none !important;
@@ -198,35 +219,34 @@ defineExpose({
 
 .edit-wrapper :deep(.el-input__wrapper:hover) {
   background: var(--color-background);
+  border-color: transparent;
 }
 
-/* 编辑框高亮样式 - 移除高亮 */
-.session-item.editing .edit-wrapper :deep(.el-input__wrapper.is-focus),
-.session-item.editing .edit-wrapper :deep(.el-input__wrapper:focus) {
-  background: var(--color-background);
+.edit-wrapper :deep(.el-input__wrapper.is-focus) {
   border-color: transparent !important;
   box-shadow: none !important;
-  outline: none !important;
 }
 
-/* 输入框内层样式 */
 .edit-wrapper :deep(.el-input__inner) {
   background: transparent;
   border: none;
+  box-shadow: none !important;
   padding: 0;
-  height: 24px;
+  min-height: 24px;
   line-height: 24px;
   color: var(--color-text-primary);
   font-size: var(--font-size-sm);
   outline: none !important;
 }
 
-/* 适配亮色和暗色模式 */
-.edit-wrapper :deep(.el-input__inner::placeholder) {
-  color: var(--color-text-tertiary);
+/* 编辑模式高亮样式 - 移除高亮 */
+.session-item.editing .edit-wrapper :deep(.el-input__wrapper.is-focus),
+.session-item.editing .edit-wrapper :deep(.el-input__wrapper:focus) {
+  background: var(--color-background);
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
-/* 动画 */
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -235,6 +255,33 @@ defineExpose({
   to {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+/* Agent 会话呼吸闪烁效果 */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(59, 130, 246, 0.3);
+    border-color: rgba(59, 130, 246, 0.6);
+  }
+}
+
+.session-item.pulse-active {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* 响应式调整 */
+@media (hover: none) and (pointer: coarse) {
+  .session-item:hover {
+    transform: none;
+    box-shadow: var(--shadow-sm);
+  }
+  .action-btn:hover {
+    transform: none;
   }
 }
 </style>

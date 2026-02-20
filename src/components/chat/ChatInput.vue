@@ -1,14 +1,15 @@
 <template>
   <div class="chat-input-container">
-    <div class="input-group">
+    <div class="input-group" :class="{ 'is-disabled': !canSend }">
       <el-input
         v-model="inputValue"
         type="textarea"
         :autosize="{ minRows: 1 }"
-        placeholder="有什么我能帮您的？"
+        :placeholder="placeholder"
         resize="none"
         class="custom-textarea"
-        :class="{ 'is-focused': isFocused }"
+        :class="{ 'is-focused': isFocused, 'is-disabled': !canSend }"
+        :disabled="!canSend"
         @focus="isFocused = true"
         @blur="isFocused = false"
         @keydown.enter.prevent="handleEnter"
@@ -27,16 +28,31 @@
         <!-- 右侧操作栏 -->
         <div class="right-actions">
           <!-- ReAct 模式开关 -->
-          <div class="react-switch-wrapper" :class="{ 'is-active': reactModeValue }">
-            <span class="switch-label" @click="reactModeValue = false">Chat</span>
+          <div
+            class="react-switch-wrapper"
+            :class="{
+              'is-active': reactModeValue,
+              'is-disabled': !canSwitchMode
+            }"
+          >
+            <span
+              class="switch-label"
+              :class="{ 'disabled': !canSwitchMode }"
+              @click="handleSwitchMode(false)"
+            >Chat</span>
             <el-switch
               v-model="reactModeValue"
               class="react-mode-switch"
               size="small"
-              :disabled="generating"
+              :disabled="!canSwitchMode || generating"
               style="--el-switch-on-color: var(--color-primary); --el-switch-off-color: var(--color-text-tertiary)"
+              @change="handleModeChange"
             />
-            <span class="switch-label" @click="reactModeValue = true">Agent</span>
+            <span
+              class="switch-label"
+              :class="{ 'disabled': !canSwitchMode }"
+              @click="handleSwitchMode(true)"
+            >Agent</span>
           </div>
 
           <!-- 停止/发送按钮 -->
@@ -53,7 +69,7 @@
           <el-button
             v-else
             type="primary"
-            :disabled="!inputValue.trim()"
+            :disabled="!inputValue.trim() || !canSend"
             @click="handleSend"
             class="send-btn"
             circle
@@ -65,18 +81,20 @@
     </div>
 
     <div class="footer-tip">
-      内容由 AI 生成，请仔细甄别。
+      {{ tipText }}
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { Position, VideoPause, Plus } from '@element-plus/icons-vue'
 
 const props = defineProps({
   generating: { type: Boolean, default: false },
-  reactMode: { type: Boolean, default: false }
+  reactMode: { type: Boolean, default: false },
+  canSwitchMode: { type: Boolean, default: true },
+  canSend: { type: Boolean, default: true }
 })
 
 const emit = defineEmits(['send', 'stop', 'update:reactMode'])
@@ -85,6 +103,22 @@ const inputValue = ref('')
 const isFocused = ref(false)
 const isComposing = ref(false)
 const reactModeValue = ref(props.reactMode)
+
+// 占位符文本
+const placeholder = computed(() => {
+  if (!props.canSend) {
+    return '该任务已完成，无法继续对话'
+  }
+  return '有什么我能帮您的？'
+})
+
+// 提示文本
+const tipText = computed(() => {
+  if (!props.canSwitchMode) {
+    return '会话开始后不可切换模式'
+  }
+  return '内容由 AI 生成，请仔细甄别。'
+})
 
 // 监听 reactMode 变化，同步到父组件
 watch(() => props.reactMode, (newVal) => {
@@ -96,7 +130,19 @@ watch(reactModeValue, (newVal) => {
   emit('update:reactMode', newVal)
 })
 
+// 处理模式切换（点击标签）
+const handleSwitchMode = (newMode) => {
+  if (!props.canSwitchMode) return
+  reactModeValue.value = newMode
+}
+
+// 处理模式变化（Switch 组件）
+const handleModeChange = (newVal) => {
+  emit('update:reactMode', newVal)
+}
+
 const handleSend = () => {
+  if (!props.canSend) return
   const text = inputValue.value.trim()
   if (!text || props.generating) return
 
@@ -105,6 +151,7 @@ const handleSend = () => {
 }
 
 const handleEnter = (e) => {
+  if (!props.canSend) return
   if (!e.shiftKey && !isComposing.value) {
     // 发送消息，清空输入框
     const text = inputValue.value.trim()
@@ -133,7 +180,7 @@ const onCompositionEnd = () => {
 <style scoped>
 .chat-input-container {
   width: 100%;
-  max-width: 800px;
+  max-width: 1000px;
   margin: 0 auto;
   padding: 0 var(--space-lg) var(--space-xl);
   display: flex;
@@ -364,6 +411,26 @@ const onCompositionEnd = () => {
   text-align: center;
   opacity: 0.8;
   letter-spacing: 0.5px;
+}
+
+/* 新增禁用状态样式 */
+.input-group.is-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.custom-textarea.is-disabled :deep(.el-textarea__inner) {
+  cursor: not-allowed;
+  background: var(--color-background-soft);
+}
+
+.react-switch-wrapper.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.react-switch-wrapper.is-disabled .switch-label {
+  cursor: not-allowed;
 }
 
 /* 响应式调整 */

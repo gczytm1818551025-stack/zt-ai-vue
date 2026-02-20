@@ -1,5 +1,5 @@
 <template>
-  <div class="message-row" :class="message.role">
+  <div class="message-row" :class="[message.role, { 'loading-glow': loading && message.role === 'server' && hasSteps }]">
     <!-- 消息内容区 -->
     <div class="chat-content-wrapper">
       <!-- AI 消息且包含 Agent Steps -->
@@ -361,5 +361,20 @@ const copyText = async (text) => {
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
+}
+
+/* Agent 模式呼吸闪烁效果 */
+@keyframes breathing-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 8px 2px rgba(59, 130, 246, 0.15);
+  }
+}
+
+/* 加载中且有步骤的气泡呼吸闪烁效果 */
+.message-row.loading-glow .server .bubble {
+  animation: breathing-pulse 2s ease-in-out infinite;
 }
 </style>

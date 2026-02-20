@@ -4,10 +4,13 @@ import {
   createSession,
   getSessionHistory,
   getSessionDetail,
-  getCurrentSession, // 新增接口
+  getCurrentSession,
   updateSessionTitle,
-  deleteSession
+  deleteSession,
+  batchGetSessionTypes,
+  getReActStatus
 } from '../chat.js'
+import { setSessionType, deleteSessionType } from '@/store/sessionTypeCache'
 
 /**
  * 封装会话管理逻辑
@@ -31,6 +34,43 @@ export function useChatSession() {
       const res = await getSessionHistory()
       if (res && res.code === 200) {
         sessionList.value = res.data || []
+        // 批量获取会话类型并缓存
+        const sessionIds = sessionList.value.map(s => s.sessionId)
+        if (sessionIds.length > 0) {
+          const results = await batchGetSessionTypes(sessionIds)
+          results.forEach(({ sessionId, data }) => {
+            if (data && data.sessionType !== undefined) {
+              setSessionType(sessionId, data.sessionType)
+              // 更新列表项的类型字段
+              const sessionItem = sessionList.value.find(s => s.sessionId === sessionId)
+              if (sessionItem) {
+                sessionItem.sessionType = data.sessionType
+              }
+            }
+          })
+        }
+
+        // 查询 ReAct 会话状态（是否正在进行）
+        const agentSessions = sessionList.value.filter(s => s.sessionType === 'AGENT')
+        if (agentSessions.length > 0) {
+          const statusPromises = agentSessions.map(async (session) => {
+            try {
+              const status = await getReActStatus(session.sessionId)
+              return { sessionId: session.sessionId, isActive: status.isActive, activeSubscribers: status.activeSubscribers }
+            } catch (e) {
+              return { sessionId: session.sessionId, isActive: false, activeSubscribers: 0 }
+            }
+          })
+
+          const statusResults = await Promise.all(statusPromises)
+          statusResults.forEach(result => {
+            const session = sessionList.value.find(s => s.sessionId === result.sessionId)
+            if (session) {
+              session.isActive = result.isActive
+              session.activeSubscribers = result.activeSubscribers
+            }
+          })
+        }
       }
     } catch (error) {
       console.error('Failed to load sessions:', error)
@@ -42,22 +82,28 @@ export function useChatSession() {
   /**
    * 创建新会话
    * 对应后端: POST /public/session
+   * @param {number} type - 会话类型：0=Chat（默认），1=Agent
    */
-  const handleCreateSession = async () => {
+  const handleCreateSession = async (type = 0) => {
     try {
-      const res = await createSession()
+      const res = await createSession(type)
       if (res && res.code === 200) {
         const newSession = res.data
+        // 缓存会话类型
+        if (newSession.sessionType !== undefined) {
+          setSessionType(newSession.sessionId, newSession.sessionType)
+        }
         // 将新会话添加到列表头部
-        // 后端返回 SessionVo，确保包含 sessionId, title 等字段
         const sessionItem = {
           sessionId: newSession.sessionId,
           title: newSession.title || '新对话',
-          updateTime: new Date().toISOString()
+          updateTime: new Date().toISOString(),
+          sessionType: newSession.sessionType
         }
         sessionList.value.unshift(sessionItem)
         return newSession
       }
+      ElMessage.success('创建会话成功')
     } catch (error) {
       ElMessage.error('创建会话失败')
       return null
@@ -71,13 +117,13 @@ export function useChatSession() {
    */
   const fetchSessionDetail = async (sessionId, retryCount = 0) => {
     const MAX_RETRIES = 2
-    
+
     // 检查会话ID是否有效
     if (!sessionId) {
       console.warn('会话ID为空，跳过获取详情')
       return []
     }
-    
+
     try {
       // 并行调用，但对每个请求单独捕获错误，防止一个失败导致整体失败
       const [msgRes, sessionRes] = await Promise.all([
@@ -90,15 +136,24 @@ export function useChatSession() {
           return null
         })
       ])
-      
+
       // 1. 如果获取到了最新的会话信息，更新本地列表中的标题
       if (sessionRes && sessionRes.code === 200 && sessionRes.data) {
         const latestSession = sessionRes.data
         const targetSession = sessionList.value.find(s => s.sessionId === sessionId)
+
+        // 缓存会话类型
+        if (latestSession.sessionType !== undefined) {
+          setSessionType(sessionId, latestSession.sessionType)
+        }
+
         if (targetSession) {
           // 如果标题有变化，更新本地标题
           if (targetSession.title !== latestSession.title) {
             targetSession.title = latestSession.title
+          }
+          if (latestSession.sessionType !== undefined) {
+            targetSession.sessionType = latestSession.sessionType
           }
         }
       }
@@ -106,19 +161,74 @@ export function useChatSession() {
       // 2. 处理消息记录
       if (msgRes && msgRes.code === 200) {
         const messages = msgRes.data || []
-        // 转换后端 MessageVo 为前端通用格式
-        // 后端 type: 1 (User), 2 (Assistant)
-        return messages.map(msg => ({
-          role: (msg.type === 1 || msg.role === 'user') ? 'user' : 'server',
-          content: msg.content
-        }))
+
+        // ReAct 步骤类型枚举（与后端 ReActStepTypeEnum 对应）
+        const ReActStepType = {
+          PLAN: 1,
+          THINKING: 2,
+          ACTION: 3,
+          FINAL: 4
+        }
+
+        // 步骤类型映射到样式配置
+        const STEP_STYLE_CONFIG = {
+          [ReActStepType.PLAN]: { title: '规划子任务', icon: 'List', type: 'plan' },
+          [ReActStepType.THINKING]: { title: '思考策略', icon: 'Opportunity', type: 'thinking' },
+          [ReActStepType.ACTION]: { title: '执行行动', icon: 'VideoPlay', type: 'action' },
+          [ReActStepType.FINAL]: { title: '最终总结', icon: 'View', type: 'final' }
+        }
+
+        // 转换后端消息为前端数据结构，支持 ReAct 模式
+        return messages.map(msg => {
+          const baseMsg = {
+            role: (msg.type === 1 || msg.role === 'user') ? 'user' : 'server',
+            content: msg.content
+          }
+
+          // 检查是否为 ReAct 消息（通过 params.steps 存在判断）
+          if (msg.params && 'steps' in msg.params && Array.isArray(msg.params.steps) && msg.params.steps.length > 0) {
+            const { steps, stepCount } = msg.params
+
+            // 将后端的 type code 潬换为前端的类型枚举，并添加样式配置
+            const convertedSteps = steps.map((step) => {
+              const styleConfig = STEP_STYLE_CONFIG[step.type]
+              if (styleConfig) {
+                return {
+                  type: step.type,
+                  title: styleConfig.title,
+                  icon: styleConfig.icon,
+                  // 保留其他业务字段
+                  index: step.index,
+                  taskContent: step.taskContent,
+                  previousEvaluation: step.previousEvaluation,
+                  memory: step.memory,
+                  thinking: step.thinking,
+                  thinkContent: step.thinkContent,
+                  success: step.success,
+                  result: step.result,
+                  resultType: step.resultType,
+                  finalResult: step.finalResult
+                }
+              }
+              return step
+            })
+
+            return {
+              ...baseMsg,
+              steps: convertedSteps,
+              stepCount: stepCount || 0
+            }
+          }
+
+          return baseMsg
+        })
       }
-      
+
       // 如果消息为空或不存在，返回空数组
       return []
     } catch (error) {
       console.error('Failed to load detail:', error)
-      
+
       // 如果是网络错误或连接错误，且未达到最大重试次数，则重试
       if (retryCount < MAX_RETRIES && (error.message?.includes('Network') || error.message?.includes('timeout'))) {
         console.log(`重试获取会话详情 (${retryCount + 1}/${MAX_RETRIES})...`)
@@ -127,7 +237,7 @@ export function useChatSession() {
         await new Promise(resolve => setTimeout(resolve, delay))
         return fetchSessionDetail(sessionId, retryCount + 1)
       }
-      
+
       // 其他错误情况也返回空数组，避免影响用户体验
       return []
     }
@@ -163,7 +273,8 @@ export function useChatSession() {
     try {
       await deleteSession(sessionId)
       sessionList.value = sessionList.value.filter(s => s.sessionId !== sessionId)
-      
+      // 删除类型缓存
+      deleteSessionType(sessionId)
       // 如果删除的是当前选中会话，调用者需要在外部处理选中状态的变更
       // 这里仅返回 true 表示成功
       // ElMessage.success('删除成功')

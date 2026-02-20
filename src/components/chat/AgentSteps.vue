@@ -116,6 +116,7 @@ const iconMap = {
   View
 }
 
+// 步骤类型标题映射
 const stepTitleMap = {
   plan: '规划子任务',
   thinking: '完成策略',

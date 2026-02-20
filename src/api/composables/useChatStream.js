@@ -1,5 +1,5 @@
 import { ref, nextTick } from 'vue'
-import { stopChat } from '@/api/chat'
+import { stopChat, stopReActChat } from '@/api/chat'
 import { useStore } from 'vuex'
 import router from '@/router'
 import { fetchEventSource } from '@microsoft/fetch-event-source'
@@ -19,6 +19,7 @@ export function useChatStream() {
   // 内部控制变量
   let abortController = null
   let onCompleteCallback = null
+  let currentReactMode = false  // 记录当前模式，用于停止时选择对应的 API
 
   /**
    * 开始对话 (建立 SSE 连接)
@@ -39,7 +40,8 @@ export function useChatStream() {
     onCompleteCallback = onComplete
     generating.value = true
     connectionStatus.value = 'connecting'
-    
+    currentReactMode = reactMode  // 记录当前模式
+
     abortController = new AbortController()
     const token = store.state.token
 
@@ -50,9 +52,24 @@ export function useChatStream() {
       ? `${baseUrl}/public/agent/task`    // ReAct 模式
       : `${baseUrl}/public/agent/chat`      // 普通模式
 
-    // 初始化 ReAct 模式的 steps
-    if (reactMode) {
+    // 恢复模式：如果是恢复连接（chatType === 2），发送 type: 0 并不发送 question
+    // 后端 GenerateTypeEnum 只支持 0(NORMAL) 和 1(REGENERATE)，不支持 2
+    const body = chatType === 2
+      ? { sessionId, type: 0 }  // 恢复模式，使用 type: 0，不发送 question
+      : { sessionId, question, type: chatType }  // 普通模式或重新生成
+
+    // ReAct 模式下，仅在首次请求（chatType === 0）时重置消息状态
+    // 恢复连接（chatType === 2）时保留已有的步骤和内容
+    if (reactMode && chatType === 0) {
+      console.log('[ReAct] 新对话：重置消息状态')
+      aiMessageRef.content = ''
       aiMessageRef.steps = []
+      aiMessageRef.stepCount = 0
+    } else if (reactMode && chatType === 2) {
+      console.log('[ReAct] 恢复连接：保留现有消息状态', {
+        stepsCount: aiMessageRef.steps?.length || 0,
+        stepCount: aiMessageRef.stepCount || 0
+      })
     }
 
     try {
@@ -62,7 +79,7 @@ export function useChatStream() {
           'Content-Type': 'application/json',
           ...(token && { 'Authorization': 'Bearer ' + token })
         },
-        body: JSON.stringify({ sessionId, question, type: chatType }), // 0-普通对话，1-重新生成
+        body: JSON.stringify(body),  // chatType: 0-普通对话/恢复连接，1-重新生成
         signal: abortController.signal,
         openWhenHidden: true, // 切换标签页时连接不关闭
 
@@ -82,30 +99,43 @@ export function useChatStream() {
         onmessage(msg) {
           try {
             const payload = JSON.parse(msg.data)
-            const eventType = payload.type
+
+            // 兼容枚举值，转换为数字
+            const eventType = getEventTypeValue(payload.type)
+            const stage = getStageValue(payload.stage)
             const eventData = payload.data
+
+            console.log('[SSE] 收到消息:', {
+              rawType: payload.type,
+              rawStage: payload.stage,
+              eventType,
+              stage,
+              reactMode,
+              eventData
+            })
 
             if (reactMode) {
               // ReAct 模式：处理 stage 字段
-              const stage = payload.stage
-              if (eventType === 1001 && eventData) {
+              if (eventType === EventTypeEnum.DATA && eventData) {
                 // 根据 stage 处理不同阶段的 ReAct 事件
+                console.log('[ReAct] 处理事件:', { stage, eventData })
                 handleReActEvent(stage, eventData, aiMessageRef, onScroll)
-              } else if (eventType === 1002) {
+              } else if (eventType === EventTypeEnum.STOP) {
                 // 停止事件 - 对话完成
+                console.log('[ReAct] 对话完成')
                 finishGeneration()
               }
             } else {
               // 普通模式：只处理文本增量
-              if (eventType === 1001 && eventData) {
+              if (eventType === EventTypeEnum.DATA && eventData) {
                 aiMessageRef.content += eventData
                 nextTick(() => {
                   if (onScroll) onScroll()
                 })
-              } else if (eventType === 1002) {
+              } else if (eventType === EventTypeEnum.STOP) {
                 // 停止事件 - 对话完成
                 finishGeneration()
-              } else if (eventType === 1003) {
+              } else if (eventType === EventTypeEnum.PARAM) {
                 // 参数事件 - 可能包含额外参数
                 console.log('Param event:', eventData)
               }
@@ -142,7 +172,7 @@ export function useChatStream() {
   /**
    * 停止生成 (双重停止)
    * 1. 前端 abort 断开连接
-   * 2. 后端调用 /stop 接口终止任务
+   * 2. 后端调用对应的停止接口终止任务（根据模式选择）
    */
   const stopGeneration = async (sessionId) => {
     // 1. 前端断开
@@ -150,32 +180,87 @@ export function useChatStream() {
     generating.value = false
     connectionStatus.value = 'disconnected'
 
-    // 2. 后端终止
+    // 2. 后端终止 - 根据模式选择对应的 API
     if (sessionId) {
       try {
-        await stopChat(sessionId)
+        if (currentReactMode) {
+          await stopReActChat(sessionId)
+        } else {
+          await stopChat(sessionId)
+        }
       } catch (error) {
         console.error('Stop chat API failed:', error)
       }
     }
   }
 
+  // 事件类型枚举映射
+  const EventTypeEnum = {
+    DATA: 1001,
+    STOP: 1002,
+    PARAM: 1003
+  }
+
+  // ReAct 阶段枚举映射
+  const ReActStageEnum = {
+    TASK_PLAN: 0,      // 子任务规划
+    STRATEGY_THINK: 1,  // 策略思考
+    ACTION_RESULT: 2,   // 行动结果
+    REFLECT: 3,        // 反思内容
+    FINAL_SUMMARY: 4    // 最终总结
+  }
+
+  // 获取事件类型的数字值（兼容枚举值）
+  const getEventTypeValue = (type) => {
+    if (typeof type === 'number') return type
+    if (typeof type === 'string') {
+      const upperType = type.toUpperCase()
+      return EventTypeEnum[upperType] ?? null
+    }
+    return null
+  }
+
+  // 获取 stage 的数字值（兼容枚举值）
+  const getStageValue = (stage) => {
+    if (typeof stage === 'number') return stage
+    if (typeof stage === 'string') {
+      const upperStage = stage.toUpperCase()
+      return ReActStageEnum[upperStage] ?? null
+    }
+    return null
+  }
+
+  // 类型码到字符串类型的映射（后端推送的是类型码：1=PLAN, 2=THINKING, 3=ACTION）
+  const stepTypeMap = {
+    1: 'plan',      // PLAN
+    2: 'thinking',  // THINKING
+    3: 'action',     // ACTION
+    4: 'final'       // FINAL（最终总结时可能用到）
+  }
+
   /**
    * 处理 ReAct 事件
    * 根据 stage 字段处理不同阶段的 ReAct 事件
-   * @param {number} stage ReAct 阶段：0-子任务规划，1-策略思考，2-行动结果，3-反思内容，4-最终总结
+   * @param {number} stage ReAct 阶段：0-子任务规划，1-策略思考，2-行动结果，4-最终总结
    * @param {Object} eventData 事件数据
    * @param {Object} aiMessageRef AI 消息对象
    * @param {Function} onScroll 滚动回调
    */
   const handleReActEvent = (stage, eventData, aiMessageRef, onScroll) => {
+    console.log('[ReAct] handleReActEvent 开始:', { stage, eventData, aiMessageRef })
+
     if (!aiMessageRef.steps) aiMessageRef.steps = []
+    console.log('[ReAct] steps 初始化后:', aiMessageRef.steps)
+
+    // 创建新数组和步数以触发响应式更新
+    const newSteps = [...aiMessageRef.steps]
+    let newStepCount = aiMessageRef.stepCount || 0
 
     switch (stage) {
       case 0: // 子任务规划 (PlanData)
-        console.log('子任务规划:', eventData)
-        aiMessageRef.steps.push({
-          type: 'plan',
+        console.log('[ReAct] 处理子任务规划:', eventData)
+        newSteps.push({
+          type: stepTypeMap[1], // 将类型码 1 映射为 'plan'
           title: '规划子任务',
           // Level 1: index 和 taskContent
           index: eventData.index,
@@ -187,24 +272,26 @@ export function useChatStream() {
           icon: 'List',
           status: 'success'
         })
+        console.log('[ReAct] 步骤添加后，steps 数量:', newSteps.length)
         break
 
       case 1: // 策略思考 (ThinkData)
-        console.log('策略思考:', eventData)
-        aiMessageRef.steps.push({
-          type: 'thinking',
+        console.log('[ReAct] 处理策略思考:', eventData)
+        newSteps.push({
+          type: stepTypeMap[2], // 将类型码 2 映射为 'thinking'
           title: '思考策略',
           // Level 1: thinkContent
           thinkContent: eventData.thinkContent || '',
           icon: 'Opportunity',
           status: 'success'
         })
+        console.log('[ReAct] 步骤添加后，steps 数量:', newSteps.length)
         break
 
       case 2: // 行动结果 (ActionData)
-        console.log('行动结果:', eventData)
-        aiMessageRef.steps.push({
-          type: 'action',
+        console.log('[ReAct] 处理行动结果:', eventData)
+        newSteps.push({
+          type: stepTypeMap[3], // 将类型码 3 映射为 'action'
           title: '执行行动',
           // Level 1: success
           success: eventData.success,
@@ -215,63 +302,32 @@ export function useChatStream() {
           icon: 'VideoPlay',
           status: eventData.success ? 'success' : 'error'
         })
-        // action事件标志着一个完整的 observe-think-act 循环完成，增加步数
-        aiMessageRef.stepCount = (aiMessageRef.stepCount || 0) + 1
-        break
-
-      case 3: // 反思内容
-        console.log('反思内容:', eventData)
-        aiMessageRef.steps.push({
-          type: 'reflection',
-          title: '反思总结',
-          content: formatReflectionContent(eventData),
-          icon: 'View',
-          status: 'success'
-        })
+        console.log('[ReAct] 步骤添加后，steps 数量:', newSteps.length)
+        newStepCount = newStepCount + 1  // action 事件增加步数
         break
 
       case 4: // 最终总结
-        console.log('最终总结:', eventData)
+        console.log('[ReAct] 处理最终总结:', eventData)
         // eventData是FinalData对象，结构为{finalResult: "markdown文本"}
-        // 提取finalResult字段，确保是字符串类型
-        aiMessageRef.content = (eventData && typeof eventData === 'object' && eventData.finalResult)
-          ? eventData.finalResult
-          : (typeof eventData === 'string' ? eventData : JSON.stringify(eventData))
+        // 提取finalResult字段
+        if (eventData && typeof eventData === 'object' && 'finalResult' in eventData) {
+          aiMessageRef.content = eventData.finalResult
+        } else if (typeof eventData === 'string') {
+          aiMessageRef.content = eventData
+        } else {
+          aiMessageRef.content = JSON.stringify(eventData || {})
+        }
+        console.log('[ReAct] 最终总结内容设置完成:', aiMessageRef.content)
         break
     }
+
+    // 重新赋值以触发响应式更新
+    aiMessageRef.steps = newSteps
+    aiMessageRef.stepCount = newStepCount
 
     nextTick(() => {
       if (onScroll) onScroll()
     })
-  }
-
-  /**
-   * 格式化反思内容
-   * @param {Object|string} eventData 反思事件数据
-   * @returns {string} 格式化后的反思内容
-   */
-  const formatReflectionContent = (eventData) => {
-    if (typeof eventData === 'string') {
-      try {
-        const parsed = JSON.parse(eventData)
-        // 提取关键信息
-        if (parsed.thinking) return parsed.thinking
-        if (parsed.reflection) return parsed.reflection
-        if (parsed.evaluation) return parsed.evaluation
-        if (parsed.previousEvaluation) return parsed.previousEvaluation
-        return eventData
-      } catch (e) {
-        return eventData
-      }
-    }
-    // 如果是对象，尝试提取有意义的内容
-    if (typeof eventData === 'object' && eventData !== null) {
-      if (eventData.thinking) return eventData.thinking
-      if (eventData.reflection) return eventData.reflection
-      if (eventData.evaluation) return eventData.evaluation
-      return JSON.stringify(eventData, null, 2)
-    }
-    return eventData
   }
 
   /**

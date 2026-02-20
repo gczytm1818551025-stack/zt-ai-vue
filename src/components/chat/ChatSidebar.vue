@@ -47,6 +47,7 @@
         @select="$emit('select', session)"
         @start-edit="startEdit(session)"
         @rename="confirmEdit(session, $event)"
+        @finish-edit="finishEdit(session)"
         @delete="$emit('delete', session)"
         ref="sessionCardRefs"
       />
@@ -67,7 +68,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
 import { Star, Plus, ChatDotRound, Fold, UserFilled, Sunny, Moon } from '@element-plus/icons-vue'
 import { useStore } from 'vuex'
 import SessionCard from './SessionCard.vue'
@@ -133,9 +134,13 @@ const startEdit = (session) => {
 
 const confirmEdit = (session, newTitle) => {
   if (editingId.value === session.sessionId) {
-    if (newTitle !== session.title) {
-      emit('rename', session.sessionId, newTitle)
-    }
+    emit('rename', session.sessionId, newTitle)
+    editingId.value = ''
+  }
+}
+
+const finishEdit = (session) => {
+  if (editingId.value === session.sessionId) {
     editingId.value = ''
   }
 }
