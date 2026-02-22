@@ -128,7 +128,15 @@ export function useChatStream() {
             } else {
               // 普通模式：只处理文本增量
               if (eventType === EventTypeEnum.DATA && eventData) {
-                aiMessageRef.content += eventData
+                // 【修复】后端推送的 eventData 直接是字符串（text），不是对象
+                // 兼容处理：如果是字符串则直接使用，如果是对象则提取 thinkContent 属性
+                let contentToAdd = ''
+                if (typeof eventData === 'string') {
+                  contentToAdd = eventData
+                } else if (eventData && typeof eventData.thinkContent === 'string') {
+                  contentToAdd = eventData.thinkContent
+                }
+                aiMessageRef.content += contentToAdd;
                 nextTick(() => {
                   if (onScroll) onScroll()
                 })
