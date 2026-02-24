@@ -17,15 +17,15 @@
           </div>
           <!-- 加载状态：Agent 模式下正在推送步骤或普通模式下等待内容时显示 -->
           <div
-            v-if="loading && isWaitingForData"
+            v-if="loading && isLast && isWaitingForData"
             class="loading-spinner-container"
           >
             <div class="loading-spinner"></div>
           </div>
           <!-- 文本内容：有内容且不在等待状态时显示 -->
-          <div v-else-if="message.content && !isWaitingForData" class="text markdown-body" v-html="renderContent"></div>
+          <div v-else-if="message.content && !(loading && isLast && isWaitingForData)" class="text markdown-body" v-html="renderContent"></div>
           <!-- 加载光标：有内容且正在等待时显示 -->
-          <span v-else-if="message.content && loading && !isWaitingForData" class="cursor">|</span>
+          <span v-else-if="message.content && loading && isLast && !isWaitingForData" class="cursor">|</span>
         </div>
 
         <!-- 操作栏 -->
@@ -94,10 +94,10 @@ const isWaitingForData = computed(() => {
   }
   // 如果有 steps 且步骤正在推送，则认为是等待状态
   if (props.message.steps && props.message.steps.length > 0) {
-    // 如果有步骤但还没有最终内容，则在等待
-    return !props.message.content
+    // 有步骤说明是 Agent 模式，等待内容或步骤都在等待
+    return true
   }
-  // 如果没有 steps，则在等待内容
+  // 如果没有 steps，则根据是否有内容判断是否等待
   return !props.message.content
 })
 

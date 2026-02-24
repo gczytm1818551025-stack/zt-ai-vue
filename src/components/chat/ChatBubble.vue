@@ -3,14 +3,16 @@
     <!-- 消息内容区 -->
     <div class="chat-content-wrapper">
       <div class="bubble" :class="role">
-        <!-- 加载状态 -->
-        <div v-if="loading && !content" class="loading-spinner-container">
+        <!-- 加载状态：最后一条消息且正在加载时显示加载动画 -->
+        <div v-if="isLast && loading && !content" class="loading-spinner-container">
           <div class="loading-spinner"></div>
         </div>
-        <!-- 文本内容：有内容且不在等待状态时显示 -->
-        <div v-else-if="content" class="text markdown-body" v-html="renderedContent"></div>
-        <!-- 加载光标：有内容且正在加载时显示 -->
-        <span v-else-if="content && loading" class="cursor">|</span>
+        <!-- 加载状态：有内容且正在加载时显示加载动画（流式输出） -->
+        <div v-else-if="isLast && loading && content" class="loading-spinner-container">
+          <div class="loading-spinner"></div>
+        </div>
+        <!-- 文本内容：不在加载状态时显示 -->
+        <div v-else-if="content && !loading" class="text markdown-body" v-html="renderedContent"></div>
       </div>
 
       <!-- 操作栏 -->

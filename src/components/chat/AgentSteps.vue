@@ -6,6 +6,14 @@
     </div>
 
     <div class="steps-container">
+      <!-- 加载动画：没有步骤时显示 -->
+      <div v-if="steps.length === 0" class="loading-placeholder">
+        <div class="loading-spinner-container">
+          <div class="loading-spinner"></div>
+        </div>
+        <div class="loading-text">思考中...</div>
+      </div>
+
       <div
         v-for="(step, index) in steps"
         :key="index"
@@ -119,8 +127,8 @@ const iconMap = {
 // 步骤类型标题映射
 const stepTitleMap = {
   plan: '规划子任务',
-  thinking: '完成策略',
-  action: '行动结果',
+  thinking: '策略考量',
+  action: '执行行动',
   reflection: '反思总结'
 }
 
@@ -336,6 +344,30 @@ const toggleAction = (index) => {
   padding-left: 0;
 }
 
+/* 加载占位符 */
+.loading-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  gap: 12px;
+}
+
+.loading-text {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--color-border);
+  border-top: 3px solid var(--color-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite, pulse 1.5s ease-in-out infinite;
+}
+
 /* 分隔线 */
 .steps-divider {
   display: flex;
@@ -370,5 +402,16 @@ const toggleAction = (index) => {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(1.1);
+  }
 }
 </style>
