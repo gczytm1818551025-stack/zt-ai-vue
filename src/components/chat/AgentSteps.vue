@@ -114,7 +114,8 @@ import ReflectionStep from './ReflectionStep.vue'
 
 const props = defineProps({
   steps: { type: Array, default: () => [] },
-  stepCount: { type: Number, default: 0 }
+  stepCount: { type: Number, default: 0 },
+  hasFinalContent: { type: Boolean, default: false }
 })
 
 const iconMap = {
@@ -142,10 +143,7 @@ const actionCount = computed(() => {
   return props.steps.filter(s => s.type === 'action').length
 })
 
-// 计算是否有最终内容
-const hasFinalContent = computed(() => {
-  return props.steps.length > 0
-})
+// hasFinalContent 改为由父组件传入的 prop 控制
 
 // 切换 Plan 步骤折叠状态
 const togglePlan = (index) => {

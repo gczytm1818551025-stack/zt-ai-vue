@@ -181,8 +181,7 @@ export function useChatStream() {
     TASK_PLAN: 0,
     STRATEGY_THINK: 1,
     ACTION_RESULT: 2,
-    REFLECT: 3,
-    FINAL_SUMMARY: 4
+    FINAL_SUMMARY: 3  // 修正：与后端 ReActStageEnum 保持一致
   }
 
   const getEventTypeValue = (type) => {
@@ -213,20 +212,30 @@ export function useChatStream() {
   const handleReActEvent = (stage, eventData, aiMessageRef, onScroll, sessionId, seq) => {
     console.log('[ReAct] 收到事件:', { stage, seq, sessionId, eventData })
 
-    const lastEvent = recentEvents.get(sessionId)
+    // 优化去重逻辑：使用 sessionId-stage-seq 作为唯一key，避免 finalResult 被误过滤
+    const dedupKey = `${sessionId}-${stage}-${seq}`
+    const lastEvent = recentEvents.get(dedupKey)
     const now = Date.now()
-    if (lastEvent && lastEvent.seq === seq && (now - lastEvent.timestamp) < 30000) {
-      console.log('[ReAct] 30秒内已收到此事件，跳过:', seq)
+
+    if (lastEvent && (now - lastEvent.timestamp) < 30000) {
+      console.log('[ReAct] 30秒内已收到此事件，跳过:', { stage, seq, dedupKey })
       return
     }
 
-    recentEvents.set(sessionId, { seq, timestamp: now })
+    recentEvents.set(dedupKey, { seq, timestamp: now })
 
-    processEvent(stage, eventData, aiMessageRef, seq)
-
-    nextTick(() => {
-      if (onScroll) onScroll()
-    })
+    // 对于 finalResult (stage=3 FINAL_SUMMARY)，使用 nextTick 确保响应式更新
+    if (stage === 3) {
+      nextTick(() => {
+        processEvent(stage, eventData, aiMessageRef, seq)
+        if (onScroll) onScroll()
+      })
+    } else {
+      processEvent(stage, eventData, aiMessageRef, seq)
+      nextTick(() => {
+        if (onScroll) onScroll()
+      })
+    }
   }
 
   const processEvent = (stage, eventData, aiMessageRef, seq) => {
@@ -284,15 +293,18 @@ export function useChatStream() {
         newStepCount = newStepCount + 1
         break
 
-      case 4:
+      case 3:  // FINAL_SUMMARY (与后端 ReActStageEnum 保持一致)
         console.log('[ReAct] 处理最终总结:', eventData)
+        let finalContent = ''
         if (eventData && typeof eventData === 'object' && 'finalResult' in eventData) {
-          aiMessageRef.content = eventData.finalResult
+          finalContent = eventData.finalResult
         } else if (typeof eventData === 'string') {
-          aiMessageRef.content = eventData
+          finalContent = eventData
         } else {
-          aiMessageRef.content = JSON.stringify(eventData || {})
+          finalContent = JSON.stringify(eventData || {})
         }
+        // 使用 Object.assign 确保触发 Vue 响应式更新
+        Object.assign(aiMessageRef, { content: finalContent })
         console.log('[ReAct] 最终总结内容设置完成:', aiMessageRef.content)
         break
     }

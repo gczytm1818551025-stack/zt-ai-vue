@@ -8,6 +8,7 @@
           <AgentSteps
             :steps="message.steps"
             :step-count="message.stepCount"
+            :has-final-content="!!message.content"
           />
           <!-- 分隔线 -->
           <div class="steps-divider" v-if="message.content">
@@ -88,13 +89,21 @@ const hasSteps = computed(() => {
 
 // 计算是否正在等待数据（Agent 模式下正在推送步骤）
 const isWaitingForData = computed(() => {
-  // 如果正在加载且是 server 消息
-  if (!props.loading || props.message.role !== 'server') {
+  // 如果不在加载中，不是等待状态
+  if (!props.loading) {
     return false
   }
-  // 如果有 steps 且步骤正在推送，则认为是等待状态
+  // 如果不是 server 消息，不是等待状态
+  if (props.message.role !== 'server') {
+    return false
+  }
+  // 如果已经有 content（包括最终结果），则不是等待状态
+  // 修复：确保 finalResult 能正确显示
+  if (props.message.content && props.message.content.length > 0) {
+    return false
+  }
+  // 如果有 steps，则认为是等待状态（正在推送步骤）
   if (props.message.steps && props.message.steps.length > 0) {
-    // 有步骤说明是 Agent 模式，等待内容或步骤都在等待
     return true
   }
   // 如果没有 steps，则根据是否有内容判断是否等待

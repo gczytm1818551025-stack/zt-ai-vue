@@ -162,20 +162,20 @@ export function useChatSession() {
       if (msgRes && msgRes.code === 200) {
         const messages = msgRes.data || []
 
-        // ReAct 步骤类型枚举（与后端 ReActStepTypeEnum 对应）
+        // ReAct 步骤类型枚举（与后端 ReActStageEnum 对应）
         const ReActStepType = {
-          PLAN: 1,
-          THINKING: 2,
-          ACTION: 3,
-          FINAL: 4
+          TASK_PLAN: 0,        // 子任务规划内容
+          STRATEGY_THINK: 1,   // 策略思考内容
+          ACTION_RESULT: 2,     // 行动结果
+          FINAL_SUMMARY: 3      // 最终总结
         }
 
-        // 步骤类型映射到样式配置
+        // 步骤类型映射到样式配置（为了保持向后兼容，也保留旧的键名）
         const STEP_STYLE_CONFIG = {
-          [ReActStepType.PLAN]: { title: '规划子任务', icon: 'List', type: 'plan' },
-          [ReActStepType.THINKING]: { title: '思考策略', icon: 'Opportunity', type: 'thinking' },
-          [ReActStepType.ACTION]: { title: '执行行动', icon: 'VideoPlay', type: 'action' },
-          [ReActStepType.FINAL]: { title: '最终总结', icon: 'View', type: 'final' }
+          [ReActStepType.TASK_PLAN]: { title: '规划子任务', icon: 'List', type: 'plan' },
+          [ReActStepType.STRATEGY_THINK]: { title: '思考策略', icon: 'Opportunity', type: 'thinking' },
+          [ReActStepType.ACTION_RESULT]: { title: '执行行动', icon: 'VideoPlay', type: 'action' },
+          [ReActStepType.FINAL_SUMMARY]: { title: '最终总结', icon: 'View', type: 'final' }
         }
 
         // 转换后端消息为前端数据结构，支持 ReAct 模式
@@ -185,16 +185,19 @@ export function useChatSession() {
             content: msg.content
           }
 
-          // 检查是否为 ReAct 消息（通过 params.steps 存在判断）
-          if (msg.params && 'steps' in msg.params && Array.isArray(msg.params.steps) && msg.params.steps.length > 0) {
-            const { steps, stepCount } = msg.params
+          // ========== 优先使用专用字段 steps ==========
+          // 检查是否为 ReAct 消息（通过专用 steps 字段判断）
+          const hasSteps = msg.steps && Array.isArray(msg.steps) && msg.steps.length > 0
+
+          if (hasSteps) {
+            const { steps, stepCount } = msg
 
             // 将后端的 type code 潬换为前端的类型枚举，并添加样式配置
             const convertedSteps = steps.map((step) => {
               const styleConfig = STEP_STYLE_CONFIG[step.type]
               if (styleConfig) {
                 return {
-                  type: step.type,
+                  type: styleConfig.type,  // 使用字符串类型 'plan', 'thinking', 'action' 而非整数类型
                   title: styleConfig.title,
                   icon: styleConfig.icon,
                   // 保留其他业务字段
