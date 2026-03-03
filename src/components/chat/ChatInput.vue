@@ -52,7 +52,7 @@
               class="switch-label"
               :class="{ 'disabled': !canSwitchMode }"
               @click="handleSwitchMode(true)"
-            >Agent</span>
+            >Task</span>
           </div>
 
           <!-- 停止/发送按钮 -->

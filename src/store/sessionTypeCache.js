@@ -39,5 +39,5 @@ export function clearSessionTypeCache() {
  * 根据 type 获取显示文本
  */
 export function getSessionTypeLabel(type) {
-  return type === SessionTypeEnum.AGENT ? 'Agent' : 'Chat'
+  return type === SessionTypeEnum.AGENT ? 'Task' : 'Chat'
 }
