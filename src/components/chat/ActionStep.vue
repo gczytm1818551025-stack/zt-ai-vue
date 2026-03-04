@@ -12,7 +12,7 @@
     </div>
     <!-- Level 2: result 结果 - 可折叠 -->
     <transition name="collapse">
-      <div v-if="expanded && result" class="level-2 action-result">
+      <div v-if="expanded && result" class="level-2 action-result" :class="{ 'action-result-error': !success }">
         <div class="result-label">📋 执行结果</div>
         <!-- JSON 结果 -->
         <div v-if="resultType === 'json'" class="result-json">
@@ -149,6 +149,11 @@ const renderMarkdown = (markdown) => {
   padding: 12px;
   border: 1px solid rgba(16, 185, 129, 0.15);
   margin-top: 8px;
+}
+
+.action-result-error {
+  background: rgba(239, 68, 68, 0.06);
+  border: 1px solid rgba(239, 68, 68, 0.15);
 }
 
 .action-result .result-label {

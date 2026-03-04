@@ -197,10 +197,9 @@ export function useChatSession() {
               const styleConfig = STEP_STYLE_CONFIG[step.type]
               if (styleConfig) {
                 return {
-                  type: styleConfig.type,  // 使用字符串类型 'plan', 'thinking', 'action' 而非整数类型
+                  type: styleConfig.type,
                   title: styleConfig.title,
                   icon: styleConfig.icon,
-                  // 保留其他业务字段
                   index: step.index,
                   taskContent: step.taskContent,
                   previousEvaluation: step.previousEvaluation,
@@ -210,7 +209,8 @@ export function useChatSession() {
                   success: step.success,
                   result: step.result,
                   resultType: step.resultType,
-                  finalResult: step.finalResult
+                  finalResult: step.finalResult,
+                  status: step.success !== undefined ? (step.success ? 'success' : 'error') : 'success'
                 }
               }
               return step
