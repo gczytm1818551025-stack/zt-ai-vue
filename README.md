@@ -42,28 +42,57 @@ graph TD
 ### 核心目录与职责
 
 - **`src/`**: 应用源码根目录。
-  - **`main.js`**: 应用入口文件。负责初始化Vue实例，并注册插件如 `Element Plus`, `Vue Router`, 和 `Vuex`。
-  - **`App.vue`**: 根组件。
-  - **`assets/`**: 存放全局样式表、字体和图片等静态资源。
+  - **`main.js`**: 应用入口文件。负责初始化Vue实例，注册插件（`Element Plus`, `Vue Router`, `Vuex`），注册Element Plus图标组件，并初始化主题设置。
+  - **`App.vue`**: 根组件，包含全局样式定义，处理iOS Safari视窗兼容性问题。
+  - **`assets/`**: 存放全局样式表（`base.css`, `main.css`）、字体和图片等静态资源。
   - **`router/`**: **路由模块**
-    - `index.js` 定义了应用的所有路由，如 `/login` 和主聊天界面 `/`。
+    - `index.js` 定义了应用的所有路由：`/`（主聊天界面，需认证）和 `/login`（登录页）。
     - 使用 `beforeEach` 导航守卫实现了路由级别的认证，未登录用户访问受保护页面时会自动跳转到登录页。
   - **`store/`**: **状态管理**
-    - 使用 `Vuex` 进行全局状态管理，主要包括用户信息、登录凭证（Token）和会话类型缓存等。
+    - `index.js`: 使用 `Vuex` 进行全局状态管理，主要包括：
+      - `token`: 用户登录凭证
+      - `userInfo`: 用户信息（如昵称）
+      - `theme`: 当前主题设置（light/dark）
+    - `sessionTypeCache.js`: 会话类型缓存模块，独立于Vuex，使用Map存储会话类型（CHAT/AGENT）。
   - **`views/`**: **视图层**
-    - 存放页面级别的组件。`Login.vue` 负责登录，`chat/index.vue` 是核心的聊天界面。
+    - `Login.vue`: 登录页面，支持手机号+验证码登录，包含主题切换功能。
+    - `chat/index.vue`: 核心聊天界面，整合侧边栏、消息列表和输入组件，管理会话状态和消息流。
   - **`components/`**: **组件层**
-    - 存放可复用的UI组件。`chat/` 子目录下的组件（如 `ChatSidebar`, `ChatMessage`, `ChatInput`）构成了聊天界面的主要部分。
-    - `ChatMessage.vue` 是一个关键组件，它能根据消息类型（用户、AI）和内容（普通文本、Markdown、Agent执行步骤）进行不同的渲染。
+    - `chat/`: 聊天相关组件
+      - `ChatSidebar.vue`: 侧边栏，显示会话列表，支持创建、选择、重命名、删除会话。
+      - `ChatMessage.vue`: 消息渲染组件，根据消息类型（用户/AI）和内容（普通文本/Markdown/Agent步骤）进行不同渲染。
+      - `ChatInput.vue`: 输入组件，支持普通Chat模式和Task(ReAct)模式切换。
+      - `ChatBubble.vue`: 消息气泡组件，用于普通消息渲染。
+      - `AgentSteps.vue`: Agent执行步骤展示组件，渲染ReAct模式的思考过程。
+      - `PlanStep.vue`, `ThinkingStep.vue`, `ActionStep.vue`, `ReflectionStep.vue`: 各类步骤详情组件。
+      - `SessionCard.vue`: 会话卡片组件。
+    - `empty/`: 空状态组件
+      - `EmptyState.vue`: 空对话界面展示。
   - **`api/`**: **API与业务逻辑层**
     - **`composables/`**: 存放了核心的组合式函数，是业务逻辑的主要载体。
-      - `useChatSession.js`: 封装了所有与会话管理相关的逻辑（增、删、改、查、切换）。
-      - `useChatStream.js`: **核心中的核心**。它封装了与后端SSE端点进行实时通信的全部复杂性。使用 `@microsoft/fetch-event-source` 库来建立连接、接收事件、处理数据，并将其更新到Vue的响应式状态中。
-    - `request.js`: 封装了 `axios`，提供了请求/响应拦截器，用于统一处理API请求，如自动附加认证Token。
+      - `useChatSession.js`: 封装了所有与会话管理相关的逻辑（创建、查询、更新、删除、切换会话，获取会话详情和ReAct状态）。
+      - `useChatStream.js`: **核心中的核心**。封装了与后端SSE端点进行实时通信的全部复杂性，使用 `@microsoft/fetch-event-source` 库建立连接、接收事件、处理数据，支持普通Chat模式和ReAct(Task)模式。
+    - `chat.js`: 会话和聊天相关的API接口定义。
+    - `user.js`: 用户认证相关API（发送验证码、登录）。
+    - `content.js`: 内容相关API。
+    - `request.js`: 封装了 `axios`，提供请求/响应拦截器，自动附加认证Token，处理401等错误状态。
+  - **`utils/`**: 工具函数目录
+    - `request.js`: Axios请求封装。
 
-## 实时通信与数据流
+## 功能特性
 
-前端通过 **Server-Sent Events (SSE)** 与后端进行实时通信，完美适配了ReAct模式下逐步返回思考和行动结果的场景。
+### 双模式对话
+
+- **Chat模式**: 普通对话模式，AI直接回复用户问题。
+- **Task模式**: ReAct代理模式，AI会逐步展示思考过程（规划子任务→思考策略→执行行动→最终总结）。
+
+### 主题切换
+
+支持浅色/深色主题切换，主题偏好保存在localStorage中，页面刷新后自动恢复。
+
+### 实时通信
+
+通过 **Server-Sent Events (SSE)** 与后端进行实时通信，完美适配了ReAct模式下逐步返回思考和行动结果的场景。
 
 ### SSE 通信流程图
 
@@ -82,8 +111,8 @@ sequenceDiagram
 
     Stream->>+Backend: 5. 建立SSE连接 (fetch-event-source)
     loop 事件流接收
-        Backend-->>Stream: 6. 推送 ReActEventVo 事件 (e.g., THINK, ACTION...)
-        Stream->>View: 7. 解析事件, 更新AI占位消息的 content 或 steps 数组
+        Backend-->>Stream: 6. 推送事件 (DATA/STOP/PARAM)
+        Stream->>View: 7. 解析事件, 更新AI消息内容或steps数组
         Note right of View: Vue的响应式系统自动更新UI
     end
     Backend-->>-Stream: 8. 推送 STOP 事件
@@ -94,31 +123,122 @@ sequenceDiagram
 ### 流程详解
 
 1.  **发送消息**: 用户在 `ChatInput` 组件中输入问题并发送。`index.vue` 的 `onSendMessage` 方法被调用。
-2.  **UI即时更新**: `onSendMessage` 首先将用户的消息添加到 `messages` 数组中，并**立即添加一个空的、响应式的AI消息占位符**。这使得UI可以马上显示用户的消息，并为即将到来的AI响应提供一个加载中的位置。
-3.  **启动流式请求**: 调用 `useChatStream` 中的 `startChat` 方法。此方法使用 `@microsoft/fetch-event-source` 向后端的 `/public/agent/task` 或 `/public/agent/chat` 端点发起连接。
-4.  **接收与处理事件**: `startChat` 设置了 `onmessage` 事件监听器。当后端推送 `ReActEventVo` 事件时，该监听器被触发。
-    - 它会解析收到的JSON数据，判断事件的类型（`stage`）。
-    - 如果是 `TASK_PLAN`, `STRATEGY_THINK`, `ACTION_RESULT` 等中间步骤，它会将数据追加到AI消息占位符的 `steps` 数组中。
-    - 如果是 `FINAL_SUMMARY` 或普通聊天内容，它会将文本追加到AI消息的 `content` 属性中。
-5.  **响应式渲染**: 由于AI消息对象是响应式的（通过 `reactive` 创建），每当 `content` 或 `steps` 数组被修改时，`ChatMessage.vue` 组件都会自动重新渲染，从而实时地将AI的思考过程展示给用户。
-6.  **结束流程**: 当后端发送 `type: "stop"` 的事件时，`fetch-event-source` 会关闭连接。`startChat` 方法的Promise完成，并可以执行一些清理或后续操作，如刷新会话列表。
+2.  **懒创建会话**: 如果当前没有会话ID，系统会先调用后端创建新会话，会话类型根据当前模式（Chat/Task）决定。
+3.  **UI即时更新**: `onSendMessage` 首先将用户的消息添加到 `messages` 数组中，并立即添加一个空的、响应式的AI消息占位符。
+4.  **启动流式请求**: 调用 `useChatStream` 中的 `startChat` 方法，根据模式向后端的 `/public/agent/chat`（Chat模式）或 `/public/agent/task`（Task模式）端点发起SSE连接。
+5.  **接收与处理事件**: `startChat` 设置事件监听器处理不同类型的事件：
+    - **DATA事件**: 包含实际内容数据
+      - Chat模式: 直接追加到消息 `content`
+      - Task模式: 根据 `stage` 字段（TASK_PLAN/STRATEGY_THINK/ACTION_RESULT/FINAL_SUMMARY）处理不同阶段数据
+    - **STOP事件**: 标记对话完成
+    - **PARAM事件**: 参数事件
+6.  **响应式渲染**: 由于AI消息对象是响应式的，每当 `content` 或 `steps` 数组被修改时，`ChatMessage.vue` 组件都会自动重新渲染。
+7.  **结束流程**: 当收到STOP事件时，连接关闭，执行完成回调（如刷新会话标题）。
+
+### ReAct阶段说明
+
+Task模式下，AI的执行过程分为四个阶段：
+
+| 阶段 | stage值 | 说明 |
+|------|---------|------|
+| TASK_PLAN | 0 | 规划子任务，分解复杂问题 |
+| STRATEGY_THINK | 1 | 思考策略，分析下一步行动 |
+| ACTION_RESULT | 2 | 执行行动，展示工具调用结果 |
+| FINAL_SUMMARY | 3 | 最终总结，给出完整答案 |
 
 ## 如何运行
 
-1.  **环境准备**:
-    - Node.js 20+
-    - pnpm (推荐)
-2.  **安装依赖**:
-    ```bash
-    pnpm install
-    ```
-3.  **配置后端地址**:
-    - 修改 `vite.config.js` 文件中的 `server.proxy` 配置，将其指向你本地运行的 `zt-ai` 后端服务地址。
-4.  **运行开发服务器**:
-    ```bash
-    pnpm dev
-    ```
-5.  **构建生产版本**:
-    ```bash
-    pnpm build
-    ```
+### 环境准备
+
+- Node.js 20+
+- npm
+
+### 安装依赖
+
+```bash
+npm install
+```
+
+### 配置后端地址
+
+项目使用环境变量配置代理，修改 `.env.development` 文件：
+
+```env
+# 代理前缀
+VITE_APP_BASE_API = '/api'
+
+# 后端目标地址 (仅供参考，实际在 vite.config.js 配置)
+VITE_APP_SERVER_URL = 'http://127.0.0.1:18081'
+```
+
+如需修改后端地址，编辑 `vite.config.js` 中的 `server.proxy.target` 配置：
+
+```javascript
+proxy: {
+  [VITE_APP_BASE_API]: {
+    target: 'http://127.0.0.1:18081', // 修改为你的后端地址
+    changeOrigin: true,
+    rewrite: (path) => path.replace(new RegExp(`^${VITE_APP_BASE_API}`), ''),
+    secure: false,
+    ws: true
+  }
+}
+```
+
+### 运行开发服务器
+
+```bash
+npm run dev
+```
+
+开发服务器将在 `http://localhost:5173` 启动，并允许局域网访问。
+
+### 构建生产版本
+
+```bash
+npm run build
+```
+
+### 预览生产构建
+
+```bash
+npm run preview
+```
+
+## 技术栈
+
+- **框架**: Vue 3 (Composition API)
+- **构建工具**: Vite 6
+- **状态管理**: Vuex 4
+- **路由**: Vue Router 4
+- **UI组件库**: Element Plus
+- **HTTP客户端**: Axios
+- **SSE客户端**: @microsoft/fetch-event-source
+- **Markdown渲染**: marked + highlight.js
+- **样式**: CSS Variables + Scoped CSS
+
+## 项目结构
+
+```
+zt-ai-vue/
+├── public/                 # 静态资源
+├── src/
+│   ├── api/               # API层
+│   │   ├── composables/   # 组合式函数
+│   │   ├── chat.js        # 聊天API
+│   │   ├── user.js        # 用户API
+│   │   └── content.js     # 内容API
+│   ├── assets/            # 静态资源（样式、图片）
+│   ├── components/        # 组件
+│   │   ├── chat/          # 聊天相关组件
+│   │   └── empty/         # 空状态组件
+│   ├── router/            # 路由配置
+│   ├── store/             # Vuex状态管理
+│   ├── utils/             # 工具函数
+│   ├── views/             # 页面视图
+│   ├── App.vue            # 根组件
+│   └── main.js            # 入口文件
+├── .env.development       # 开发环境变量
+├── vite.config.js         # Vite配置
+└── package.json           # 项目配置
+```

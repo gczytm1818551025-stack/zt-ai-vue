@@ -1,23 +1,18 @@
 <template>
   <div class="message-row" :class="role">
-    <!-- 消息内容区 -->
     <div class="chat-content-wrapper">
       <div class="bubble" :class="role">
-        <!-- 加载状态：最后一条消息且正在加载时显示加载动画 -->
         <div v-if="isLast && loading && !content" class="loading-spinner-container">
           <div class="loading-spinner"></div>
         </div>
-        <!-- 加载状态：有内容且正在加载时显示加载动画（流式输出） -->
-        <div v-else-if="isLast && loading && content" class="loading-spinner-container">
-          <div class="loading-spinner"></div>
-        </div>
-        <!-- 文本内容：不在加载状态时显示 -->
-        <div v-else-if="content && !loading" class="text markdown-body" v-html="renderedContent"></div>
+        <template v-else-if="content">
+          <div class="text markdown-body" v-html="renderedContent"></div>
+          <span v-if="isLast && loading" class="cursor"></span>
+        </template>
       </div>
 
-      <!-- 操作栏 -->
-      <div class="actions" v-if="!loading">
-        <el-tooltip content="复制" placement="bottom" v-if="content">
+      <div class="actions" v-if="!loading && content">
+        <el-tooltip content="复制" placement="bottom">
           <el-icon class="action-btn" @click="copyText(content)"><CopyDocument /></el-icon>
         </el-tooltip>
         <el-tooltip content="重新生成" placement="bottom" v-if="isLast && role === 'server'">
@@ -51,7 +46,8 @@ marked.setOptions({
     return hljs.highlight(code, { language }).value
   },
   langPrefix: 'hljs language-',
-  breaks: true
+  breaks: true,
+  gfm: true
 })
 
 // 渲染 Markdown
@@ -250,12 +246,15 @@ const copyText = async (text) => {
   border-collapse: collapse;
   margin: 16px 0;
   font-size: 0.95em;
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 .markdown-body :deep(th),
 .markdown-body :deep(td) {
   padding: 10px 12px;
   text-align: left;
-  border-bottom: 1px solid var(--color-border);
+  border: 1px solid var(--color-border);
   color: var(--color-text-primary);
 }
 .markdown-body :deep(th) {
@@ -263,8 +262,11 @@ const copyText = async (text) => {
   font-weight: 600;
   color: var(--color-text-primary);
 }
-.markdown-body :deep(tr:hover) {
+.markdown-body :deep(tr:nth-child(even)) {
   background-color: var(--color-background-soft);
+}
+.markdown-body :deep(tr:hover) {
+  background-color: var(--color-background);
 }
 
 /* 水平分隔线 */
@@ -402,11 +404,9 @@ const copyText = async (text) => {
 @keyframes pulse {
   0%, 100% {
     opacity: 1;
-    transform: scale(1);
   }
   50% {
-    opacity: 0.7;
-    transform: scale(1.1);
+    opacity: 0.5;
   }
 }
 

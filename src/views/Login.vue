@@ -225,7 +225,6 @@ const handleLogin = () => {
               radial-gradient(circle at 80% 70%, rgba(148, 163, 184, 0.08) 0%, transparent 50%),
               radial-gradient(circle at 40% 80%, rgba(34, 197, 94, 0.06) 0%, transparent 50%),
               radial-gradient(circle at 60% 20%, rgba(245, 158, 11, 0.05) 0%, transparent 50%);
-  animation: bgFloat 20s ease-in-out infinite;
 }
 
 /* 主题切换按钮 */
@@ -256,22 +255,6 @@ const handleLogin = () => {
   border-color: var(--color-border);
   transform: rotate(15deg);
   box-shadow: var(--shadow-md);
-}
-
-/* 背景浮动动画 */
-@keyframes bgFloat {
-  0%, 100% {
-    transform: translateY(0px) rotate(0deg);
-  }
-  25% {
-    transform: translateY(-10px) rotate(1deg);
-  }
-  50% {
-    transform: translateY(0px) rotate(0deg);
-  }
-  75% {
-    transform: translateY(10px) rotate(-1deg);
-  }
 }
 
 /* 登录内容 */
@@ -310,7 +293,6 @@ const handleLogin = () => {
   height: 200%;
   background: linear-gradient(45deg, transparent, rgba(59, 130, 246, 0.05), transparent);
   transform: rotate(45deg);
-  animation: shine 6s linear infinite;
   pointer-events: none;
 }
 
@@ -318,16 +300,6 @@ const handleLogin = () => {
   box-shadow: var(--shadow-xl);
   transform: translateY(-2px);
   border-color: var(--color-border-hover);
-}
-
-/* 光泽动画 */
-@keyframes shine {
-  0% {
-    transform: translateX(-100%) rotate(45deg);
-  }
-  100% {
-    transform: translateX(100%) rotate(45deg);
-  }
 }
 
 /* 登录头部 */
@@ -538,29 +510,6 @@ const handleLogin = () => {
   font-size: var(--font-size-xs);
   color: var(--color-text-tertiary);
   letter-spacing: 0.25px;
-}
-
-/* 动画效果 */
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.05);
-    opacity: 0.8;
-  }
-}
-
-@keyframes pulse-ring {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 0.5;
-  }
-  50% {
-    transform: scale(1.1);
-    opacity: 0.8;
-  }
 }
 
 /* 响应式设计 */

@@ -13,6 +13,7 @@ export function useChatStream() {
   let abortController = null
   let onCompleteCallback = null
   let currentReactMode = false
+  let currentSessionId = null
 
   const recentEvents = new Map()
 
@@ -22,6 +23,7 @@ export function useChatStream() {
     generating.value = true
     connectionStatus.value = 'connecting'
     currentReactMode = reactMode
+    currentSessionId = sessionId  // 保存当前会话 ID
 
     abortController = new AbortController()
     const token = store.state.token
@@ -141,6 +143,7 @@ export function useChatStream() {
     closeConnection()
     generating.value = false
     connectionStatus.value = 'disconnected'
+    currentSessionId = null  // 清空当前会话 ID
 
     if (sessionId) {
       try {
@@ -340,6 +343,7 @@ export function useChatStream() {
     connectionStatus,
     generating,
     startChat,
-    stopGeneration
+    stopGeneration,
+    currentSessionId
   }
 }

@@ -1,5 +1,8 @@
 <template>
   <div class="chat-input-container">
+    <div v-if="generating && reactMode" class="task-warning-tip">
+      任务执行中请勿刷新页面或切换对话哦！否则任务将自动终止
+    </div>
     <div class="input-group" :class="{ 'is-disabled': !canSend }">
       <el-input
         v-model="inputValue"
@@ -186,6 +189,36 @@ const onCompositionEnd = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+.task-warning-tip {
+  font-size: 13px;
+  text-align: center;
+  margin-bottom: 8px;
+  letter-spacing: 0.3px;
+  background: linear-gradient(
+    90deg,
+    #8b7ec8 0%,
+    #7ba3c9 20%,
+    #6bb5a0 40%,
+    #a8b86b 60%,
+    #c9a07b 80%,
+    #8b7ec8 100%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradientFlow 3s linear infinite;
+}
+
+@keyframes gradientFlow {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
 }
 
 .input-group {

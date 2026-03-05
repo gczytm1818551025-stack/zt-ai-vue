@@ -61,6 +61,7 @@ import EmptyState from '@/components/empty/EmptyState.vue'
 // 逻辑 Hooks
 import { useChatSession } from '@/api/composables/useChatSession'
 import { useChatStream } from '@/api/composables/useChatStream'
+import { stopReActChat } from '@/api/chat'
 import { SessionTypeEnum } from '@/store/sessionTypeCache'
 
 const store = useStore()
@@ -118,7 +119,8 @@ const {
 const {
   generating,
   startChat,
-  stopGeneration
+  stopGeneration,
+  currentSessionId: streamSessionId
 } = useChatStream()
 
 // 当前消息列表
@@ -153,6 +155,25 @@ onMounted(async () => {
   // 重置 React 模式和会话类型状态（修复刷新后状态残留问题）
   reactMode.value = false
   currentSessionType.value = null
+
+  // 监听页面刷新/关闭事件
+  const handleBeforeUnload = (event) => {
+    // 如果正在生成对话（ReAct 模式），通知后端停止
+    if (generating.value && reactMode.value && streamSessionId.value) {
+      console.log('[Chat] 页面即将刷新/关闭，停止 ReAct 对话')
+      const token = store.state.token
+      const baseUrl = import.meta.env.VITE_APP_BASE_API || '/api'
+      const url = `${baseUrl}/public/agent/react/stop?sessionId=${encodeURIComponent(streamSessionId.value)}`
+      // 使用 sendBeacon 确保在页面卸载前发送请求
+      navigator.sendBeacon(url, new Blob([], { type: 'application/json' }))
+    }
+  }
+  window.addEventListener('beforeunload', handleBeforeUnload)
+
+  // 返回清理函数
+  return () => {
+    window.removeEventListener('beforeunload', handleBeforeUnload)
+  }
 })
 
 // 滚动到底部
@@ -163,6 +184,19 @@ const scrollToBottom = () => {
     }
   })
 }
+
+// 组件卸载时的清理
+onBeforeUnmount(async () => {
+  // 组件卸载时，如果正在生成对话（ReAct 模式），主动停止
+  if (generating.value && reactMode.value && streamSessionId.value) {
+    console.log('[Chat] 组件卸载，停止当前 ReAct 对话')
+    try {
+      await stopReActChat(streamSessionId.value)
+    } catch (error) {
+      console.error('停止对话失败:', error)
+    }
+  }
+})
 
 // --- 事件处理 ---
 

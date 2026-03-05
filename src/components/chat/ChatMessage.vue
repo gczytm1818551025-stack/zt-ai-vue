@@ -77,7 +77,8 @@ marked.setOptions({
     return hljs.highlight(code, { language }).value
   },
   langPrefix: 'hljs language-',
-  breaks: true
+  breaks: true,
+  gfm: true
 })
 
 // 计算是否有 Agent Steps
@@ -249,6 +250,35 @@ const copyText = async (text) => {
   font-weight: 500;
 }
 
+/* 表格样式 */
+.markdown-body :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 0.95em;
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+}
+.markdown-body :deep(th) {
+  background-color: var(--color-background-soft);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.markdown-body :deep(tr:nth-child(even)) {
+  background-color: var(--color-background-soft);
+}
+.markdown-body :deep(tr:hover) {
+  background-color: var(--color-background);
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .bubble {
@@ -348,11 +378,9 @@ const copyText = async (text) => {
 @keyframes pulse {
   0%, 100% {
     opacity: 1;
-    transform: scale(1);
   }
   50% {
-    opacity: 0.7;
-    transform: scale(1.1);
+    opacity: 0.5;
   }
 }
 
