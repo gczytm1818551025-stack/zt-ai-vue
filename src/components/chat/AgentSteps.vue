@@ -92,12 +92,6 @@
         </div>
       </div>
     </div>
-
-    <div class="steps-divider" v-if="hasFinalContent">
-      <div class="divider-line"></div>
-<!--      <span class="divider-text">最终回复</span>-->
-      <div class="divider-line"></div>
-    </div>
   </div>
 </template>
 
@@ -114,8 +108,7 @@ import ReflectionStep from './ReflectionStep.vue'
 
 const props = defineProps({
   steps: { type: Array, default: () => [] },
-  stepCount: { type: Number, default: 0 },
-  hasFinalContent: { type: Boolean, default: false }
+  stepCount: { type: Number, default: 0 }
 })
 
 const iconMap = {
@@ -364,37 +357,6 @@ const toggleAction = (index) => {
   border-top: 3px solid var(--color-primary);
   border-radius: 50%;
   animation: spin 1s linear infinite, pulse 1.5s ease-in-out infinite;
-}
-
-/* 分隔线 */
-.steps-divider {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin: 24px 0;
-  position: relative;
-}
-
-.divider-line {
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg,
-    transparent,
-    var(--color-border) 20%,
-    var(--color-border) 80%,
-    transparent
-  );
-}
-
-.divider-text {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text-tertiary);
-  white-space: nowrap;
-  padding: 4px 12px;
-  background: var(--color-background-soft);
-  border-radius: 12px;
-  border: 1px solid var(--color-border);
 }
 
 @keyframes spin {

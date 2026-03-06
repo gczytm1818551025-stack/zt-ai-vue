@@ -1,21 +1,30 @@
 <template>
   <div class="message-row" :class="[message.role, { 'loading-glow': loading && message.role === 'server' && hasSteps }]">
     <!-- 消息内容区 -->
-    <div class="chat-content-wrapper">
+    <div class="chat-content-wrapper" :class="{ 'full-width': message.role === 'server' && hasSteps }">
       <!-- AI 消息且包含 Agent Steps -->
       <template v-if="message.role === 'server' && hasSteps">
-        <div class="bubble server">
+        <div class="bubble server" :class="{ 'has-steps': hasSteps }">
+          <!-- 折叠控制头部 -->
+          <div
+            v-if="showCollapseHeader"
+            class="collapse-header"
+            @click="toggleStepsCollapse"
+          >
+            <div class="collapse-left">
+              <el-icon class="collapse-icon" :class="{ 'collapsed': stepsCollapsed }">
+                <ArrowRight />
+              </el-icon>
+              <span class="collapse-title">执行过程</span>
+              <span class="collapse-count">{{ message.stepCount || actionCount }} 步</span>
+            </div>
+          </div>
+
           <AgentSteps
+            v-show="!stepsCollapsed"
             :steps="message.steps"
             :step-count="message.stepCount"
-            :has-final-content="!!message.content"
           />
-          <!-- 分隔线 -->
-          <div class="steps-divider" v-if="message.content">
-            <div class="divider-line"></div>
-<!--            <span class="divider-text">最终回复</span>-->
-            <div class="divider-line"></div>
-          </div>
           <!-- 加载状态：Agent 模式下正在推送步骤或普通模式下等待内容时显示 -->
           <div
             v-if="loading && isLast && isWaitingForData"
@@ -54,8 +63,8 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { CopyDocument, RefreshRight } from '@element-plus/icons-vue'
+import { computed, ref, watch } from 'vue'
+import { CopyDocument, RefreshRight, ArrowRight } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
 import hljs from 'highlight.js'
@@ -69,6 +78,31 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['regenerate'])
+
+const hasFinalContent = computed(() => {
+  return props.message.content && props.message.content.length > 0
+})
+
+const stepsCollapsed = ref(hasFinalContent.value)
+
+const showCollapseHeader = computed(() => {
+  return hasFinalContent.value && props.message.steps && props.message.steps.length > 0
+})
+
+const actionCount = computed(() => {
+  if (!props.message.steps) return 0
+  return props.message.steps.filter(s => s.type === 'action').length
+})
+
+watch(hasFinalContent, (newVal) => {
+  if (newVal) {
+    stepsCollapsed.value = true
+  }
+})
+
+const toggleStepsCollapse = () => {
+  stepsCollapsed.value = !stepsCollapsed.value
+}
 
 // 配置 marked
 marked.setOptions({
@@ -149,6 +183,16 @@ const copyText = async (text) => {
   justify-content: flex-start;
 }
 
+.chat-content-wrapper {
+  max-width: 80%;
+  min-width: 80px;
+}
+
+.chat-content-wrapper.full-width {
+  max-width: 80%;
+  width: 80%;
+}
+
 /* AI 消息气泡 */
 .bubble {
   padding: var(--space-md) var(--space-lg);
@@ -164,6 +208,11 @@ const copyText = async (text) => {
   border: 1px solid var(--color-border);
 }
 
+.bubble.has-steps {
+  width: 100%;
+  max-width: none;
+}
+
 .server .bubble {
   --bubble-start: var(--bubble-server-start);
   --bubble-end: var(--bubble-server-end);
@@ -175,6 +224,65 @@ const copyText = async (text) => {
   box-shadow: var(--shadow-lg);
   transform: translateY(-2px);
   border-color: var(--color-border);
+}
+
+/* 折叠控制头部 */
+.collapse-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: var(--color-background-soft);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid var(--color-border);
+  user-select: none;
+}
+
+.collapse-header:hover {
+  background: var(--color-background-mute);
+  border-color: var(--color-primary-light);
+}
+
+.collapse-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collapse-icon {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  transition: transform 0.3s ease;
+}
+
+.collapse-icon.collapsed {
+  transform: rotate(0deg);
+}
+
+.collapse-icon:not(.collapsed) {
+  transform: rotate(90deg);
+}
+
+.collapse-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.collapse-count {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  background: var(--color-background);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.collapse-hint {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
 }
 
 /* Markdown 样式增强 */
@@ -337,37 +445,6 @@ const copyText = async (text) => {
   background: var(--color-background-soft);
   color: var(--color-text-primary);
   transform: scale(1.1);
-}
-
-/* 分隔线 */
-.steps-divider {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin: 24px 0;
-  position: relative;
-}
-
-.divider-line {
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg,
-    transparent,
-    var(--color-border) 20%,
-    var(--color-border) 80%,
-    transparent
-  );
-}
-
-.divider-text {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--color-text-tertiary);
-  white-space: nowrap;
-  padding: 4px 12px;
-  background: var(--color-background-soft);
-  border-radius: 12px;
-  border: 1px solid var(--color-border);
 }
 
 @keyframes spin {
