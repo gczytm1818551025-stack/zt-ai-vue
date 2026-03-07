@@ -1,17 +1,14 @@
 <template>
   <div class="plan-content">
-    <!-- Level 1: "子任务[index]" + 换行 + taskContent -->
     <div class="plan-header-row" @click="toggle">
       <div class="plan-index">子任务{{ index }}</div>
       <div class="task-content">{{ taskContent }}</div>
-      <!-- 折叠按钮 -->
       <el-icon v-if="previousEvaluation || memory || thinking" :class="['collapse-icon', { expanded: expanded }]">
         <ArrowDown />
       </el-icon>
     </div>
-    <!-- Level 2: 可折叠的状态详情 -->
-    <transition name="collapse">
-      <div v-if="expanded && (previousEvaluation || memory || thinking)" class="level-2 plan-state">
+    <div class="collapse-wrapper" :class="{ expanded: expanded && (previousEvaluation || memory || thinking) }">
+      <div class="level-2 plan-state">
         <div v-if="previousEvaluation" class="state-item">
           <span class="state-label">📊 评估:</span>
           <span class="state-value">{{ previousEvaluation }}</span>
@@ -25,7 +22,7 @@
           <span class="state-value">{{ thinking }}</span>
         </div>
       </div>
-    </transition>
+    </div>
   </div>
 </template>
 
@@ -49,7 +46,32 @@ const toggle = () => {
 </script>
 
 <style scoped>
-.plan-content .plan-index {
+.plan-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.plan-header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  padding: 0;
+  border-radius: 4px;
+}
+
+.plan-header-row:hover {
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.plan-index {
   display: inline-block;
   font-size: 12px;
   line-height: 1.5;
@@ -58,53 +80,23 @@ const toggle = () => {
   background: rgba(59, 130, 246, 0.1);
   padding: 2px 10px;
   border-radius: 12px;
-}
-
-.plan-content .task-content {
-  font-size: 14px;
-  color: var(--color-text-primary);
-  line-height: 1.6;
-}
-
-.plan-header-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  padding: 4px 0;
-  margin: -4px 0 4px 0;
-  border-radius: 4px;
-}
-
-.plan-header-row:hover {
-  background: rgba(59, 130, 246, 0.05);
-}
-
-.plan-content .plan-index {
-  display: inline-block;
-  font-size: 12px;
-  font-weight: 600;
-  color: #3b82f6;
-  background: rgba(59, 130, 246, 0.1);
-  padding: 2px 10px;
-  border-radius: 12px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.plan-content .task-content {
+.task-content {
   flex: 1;
   font-size: 14px;
   color: var(--color-text-primary);
   line-height: 1.6;
+  min-width: 0;
 }
 
-/* 折叠图标 - 统一定位在右侧 */
 .collapse-icon {
   flex-shrink: 0;
   font-size: 16px;
   color: var(--color-text-tertiary);
-  transition: transform 0.3s ease;
+  transition: transform 0.2s ease;
   cursor: pointer;
   margin-left: auto;
 }
@@ -117,41 +109,38 @@ const toggle = () => {
   transform: rotate(180deg);
 }
 
-/* 折叠动画 */
-.collapse-enter-active,
-.collapse-leave-active {
-  transition: all 0.3s ease;
+.collapse-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.collapse-wrapper.expanded {
+  grid-template-rows: 1fr;
+}
+
+.collapse-wrapper > .level-2 {
+  min-height: 0;
   overflow: hidden;
 }
 
-.collapse-enter-from,
-.collapse-leave-to {
-  max-height: 0;
-  opacity: 0;
-}
-
-.collapse-enter-to,
-.collapse-leave-from {
-  max-height: 500px;
-  opacity: 1;
-}
-
-/* Level 2 - 第二层次（次要信息） */
 .level-2 {
   font-size: 13px;
   color: var(--color-text-secondary);
   font-weight: 400;
   line-height: 1.5;
-  opacity: 0.9;
-  margin-top: 8px;
 }
 
 .plan-state {
-  padding: 10px 0;
-  border-top: 1px solid rgba(59, 130, 246, 0.1);
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.collapse-wrapper.expanded .plan-state {
+  padding: 10px 0;
+  border-top: 1px solid rgba(59, 130, 246, 0.1);
+  margin-top: 8px;
 }
 
 .state-item {

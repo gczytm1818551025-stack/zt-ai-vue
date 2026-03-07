@@ -5,23 +5,19 @@
       <el-tag :type="success ? 'success' : 'danger'" effect="plain" size="default">
         {{ success ? '成功' : '失败' }}
       </el-tag>
-      <!-- 折叠按钮 -->
       <el-icon v-if="result" :class="['collapse-icon', { expanded: expanded }]">
         <ArrowDown />
       </el-icon>
     </div>
-    <!-- Level 2: result 结果 - 可折叠 -->
-    <transition name="collapse">
-      <div v-if="expanded && result" class="level-2 action-result" :class="{ 'action-result-error': !success }">
+    <div class="collapse-wrapper" :class="{ expanded: expanded && result }">
+      <div class="level-2 action-result" :class="{ 'action-result-error': !success }">
         <div class="result-label">📋 执行结果</div>
-        <!-- JSON 结果 -->
         <div v-if="resultType === 'json'" class="result-json">
           <pre class="result-text">{{ formatJson(result) }}</pre>
         </div>
-        <!-- Markdown 结果 -->
         <div v-else class="result-markdown" v-html="renderMarkdown(result)"></div>
       </div>
-    </transition>
+    </div>
   </div>
 </template>
 
@@ -64,35 +60,45 @@ const renderMarkdown = (markdown) => {
 </script>
 
 <style scoped>
+.action-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .action-status-label {
   display: inline-block;
   font-size: 13px;
   padding: 2px 10px;
   border-radius: 12px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .action-header-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 1;
+  min-width: 0;
   cursor: pointer;
-  transition: all 0.3s ease;
-  padding: 4px 0;
-  margin: -4px 0 4px 0;
+  transition: background 0.2s ease;
+  padding: 0;
   border-radius: 4px;
 }
 
 .action-header-row:hover {
-  background: rgba(59, 130, 246, 0.05);
+  background: rgba(16, 185, 129, 0.05);
 }
 
-/* 折叠图标 - 统一定位在右侧 */
 .collapse-icon {
   flex-shrink: 0;
   font-size: 16px;
   color: var(--color-text-tertiary);
-  transition: transform 0.3s ease;
+  transition: transform 0.2s ease;
   cursor: pointer;
   margin-left: auto;
 }
@@ -105,53 +111,43 @@ const renderMarkdown = (markdown) => {
   transform: rotate(180deg);
 }
 
-/* 折叠动画 */
-.collapse-enter-active,
-.collapse-leave-active {
-  transition: all 0.3s ease;
+.collapse-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.2s ease;
+}
+
+.collapse-wrapper.expanded {
+  grid-template-rows: 1fr;
+}
+
+.collapse-wrapper > .level-2 {
+  min-height: 0;
   overflow: hidden;
 }
 
-.collapse-enter-from,
-.collapse-leave-to {
-  max-height: 0;
-  opacity: 0;
-}
-
-.collapse-enter-to,
-.collapse-leave-from {
-  max-height: 500px;
-  opacity: 1;
-}
-
-/* Level 2 - 第二层次（次要信息） */
 .level-2 {
   font-size: 13px;
   color: var(--color-text-secondary);
   font-weight: 400;
   line-height: 1.5;
-  opacity: 0.9;
-  margin-top: 8px;
-}
-
-.action-content {
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  padding: 0;
-  margin: 0;
-  position: relative;
 }
 
 .action-result {
-  background: rgba(16, 185, 129, 0.06);
   border-radius: 8px;
+}
+
+.collapse-wrapper.expanded .action-result {
   padding: 12px;
-  border: 1px solid rgba(16, 185, 129, 0.15);
   margin-top: 8px;
 }
 
-.action-result-error {
+.collapse-wrapper.expanded .action-result:not(.action-result-error) {
+  background: rgba(16, 185, 129, 0.06);
+  border: 1px solid rgba(16, 185, 129, 0.15);
+}
+
+.collapse-wrapper.expanded .action-result-error {
   background: rgba(239, 68, 68, 0.06);
   border: 1px solid rgba(239, 68, 68, 0.15);
 }
@@ -165,7 +161,6 @@ const renderMarkdown = (markdown) => {
   letter-spacing: 0.5px;
 }
 
-/* JSON 结果样式 */
 .result-json {
   background: var(--color-background);
   border-radius: 6px;
@@ -183,7 +178,6 @@ const renderMarkdown = (markdown) => {
   line-height: 1.5;
 }
 
-/* Markdown 结果样式 */
 .result-markdown {
   background: var(--color-background);
   border-radius: 6px;

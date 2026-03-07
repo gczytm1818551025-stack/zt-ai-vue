@@ -1,8 +1,7 @@
 <template>
-  <div class="thinking-content level-1" @click="toggle">
+  <div class="thinking-content" @click="toggle">
     <div class="thinking-header-row">
       <div :class="['thinking-text', { 'is-truncated': !expanded }]">{{ thinkContent }}</div>
-      <!-- 折叠按钮 -->
       <el-icon v-if="thinkContent && thinkContent.length > 100" :class="['collapse-icon', { expanded: expanded }]" @click.stop="toggle">
         <ArrowDown />
       </el-icon>
@@ -27,27 +26,36 @@ const toggle = () => {
 
 <style scoped>
 .thinking-content {
-  background: transparent;
-  border: none;
-  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.thinking-header-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  transition: background 0.2s ease;
   padding: 0;
-  margin: 0;
-  position: relative;
+  border-radius: 4px;
 }
 
-/* Level 1 - 第一层次（主要信息） */
-.level-1 {
-  font-size: 14px;
-  color: var(--color-text-primary);
-  font-weight: 500;
-  line-height: 1.6;
+.thinking-header-row:hover {
+  background: rgba(139, 92, 246, 0.05);
 }
 
-/* 思考文本样式 */
 .thinking-text {
   font-size: 14px;
   color: var(--color-text-primary);
   line-height: 1.6;
+  flex: 1;
+  min-width: 0;
 }
 
 .thinking-text.is-truncated {
@@ -56,27 +64,11 @@ const toggle = () => {
   text-overflow: ellipsis;
 }
 
-.thinking-header-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  padding: 4px 0;
-  margin: -4px 0 4px 0;
-  border-radius: 4px;
-}
-
-.thinking-header-row:hover {
-  background: rgba(59, 130, 246, 0.05);
-}
-
-/* 折叠图标 - 统一定位在右侧 */
 .collapse-icon {
   flex-shrink: 0;
   font-size: 16px;
   color: var(--color-text-tertiary);
-  transition: transform 0.3s ease;
+  transition: transform 0.2s ease;
   cursor: pointer;
   margin-left: auto;
 }

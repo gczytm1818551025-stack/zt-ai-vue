@@ -63,7 +63,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { CopyDocument, RefreshRight, ArrowRight } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { marked } from 'marked'
@@ -83,7 +83,7 @@ const hasFinalContent = computed(() => {
   return props.message.content && props.message.content.length > 0
 })
 
-const stepsCollapsed = ref(hasFinalContent.value)
+const stepsCollapsed = ref(false)
 
 const showCollapseHeader = computed(() => {
   return hasFinalContent.value && props.message.steps && props.message.steps.length > 0
@@ -98,7 +98,7 @@ watch(hasFinalContent, (newVal) => {
   if (newVal) {
     stepsCollapsed.value = true
   }
-})
+}, { immediate: true })
 
 const toggleStepsCollapse = () => {
   stepsCollapsed.value = !stepsCollapsed.value
@@ -231,19 +231,17 @@ const copyText = async (text) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 14px;
-  margin-bottom: 12px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
   background: var(--color-background-soft);
-  border-radius: var(--radius-md);
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid var(--color-border);
+  transition: background 0.2s ease;
   user-select: none;
 }
 
 .collapse-header:hover {
   background: var(--color-background-mute);
-  border-color: var(--color-primary-light);
 }
 
 .collapse-left {

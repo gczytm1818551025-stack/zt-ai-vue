@@ -246,13 +246,12 @@ export function useChatStream() {
 
     if (!aiMessageRef.steps) aiMessageRef.steps = []
 
-    const newSteps = [...aiMessageRef.steps]
     let newStepCount = aiMessageRef.stepCount || 0
 
     switch (stage) {
       case 0:
         console.log('[ReAct] 处理子任务规划:', eventData)
-        newSteps.push({
+        aiMessageRef.steps.push({
           type: stepTypeMap[1],
           title: '规划子任务',
           index: eventData.index,
@@ -264,12 +263,12 @@ export function useChatStream() {
           status: 'success',
           sequenceNumber: seq
         })
-        console.log('[ReAct] 步骤添加后，steps 数量:', newSteps.length)
+        console.log('[ReAct] 步骤添加后，steps 数量:', aiMessageRef.steps.length)
         break
 
       case 1:
         console.log('[ReAct] 处理策略思考:', eventData)
-        newSteps.push({
+        aiMessageRef.steps.push({
           type: stepTypeMap[2],
           title: '思考策略',
           thinkContent: eventData.thinkContent || '',
@@ -277,12 +276,12 @@ export function useChatStream() {
           status: 'success',
           sequenceNumber: seq
         })
-        console.log('[ReAct] 步骤添加后，steps 数量:', newSteps.length)
+        console.log('[ReAct] 步骤添加后，steps 数量:', aiMessageRef.steps.length)
         break
 
       case 2:
         console.log('[ReAct] 处理行动结果:', eventData)
-        newSteps.push({
+        aiMessageRef.steps.push({
           type: stepTypeMap[3],
           title: '执行行动',
           success: eventData.success,
@@ -292,8 +291,9 @@ export function useChatStream() {
           status: eventData.success ? 'success' : 'error',
           sequenceNumber: seq
         })
-        console.log('[ReAct] 步骤添加后，steps 数量:', newSteps.length)
+        console.log('[ReAct] 步骤添加后，steps 数量:', aiMessageRef.steps.length)
         newStepCount = newStepCount + 1
+        aiMessageRef.stepCount = newStepCount
         break
 
       case 3:  // FINAL_SUMMARY (与后端 ReActStageEnum 保持一致)
@@ -312,16 +312,14 @@ export function useChatStream() {
         break
     }
 
-    newSteps.sort((a, b) => {
+    // 按 sequenceNumber 排序
+    aiMessageRef.steps.sort((a, b) => {
       const seqA = a.sequenceNumber || 0
       const seqB = b.sequenceNumber || 0
       return seqA - seqB
     })
 
-    aiMessageRef.steps = newSteps
-    aiMessageRef.stepCount = newStepCount
-
-    console.log('[ReAct] 事件处理完成，steps数量:', newSteps.length)
+    console.log('[ReAct] 事件处理完成，steps数量:', aiMessageRef.steps.length)
   }
 
   const detectResultType = (result) => {

@@ -1,7 +1,7 @@
 <template>
   <div class="agent-steps">
     <div class="steps-header">
-      <div class="steps-title">收到任务！</div>
+      <div class="steps-title">收到任务！现在我将为您规划并完成。</div>
       <div class="steps-counter">{{ stepCount || actionCount }} 步</div>
     </div>
 
@@ -16,7 +16,7 @@
 
       <div
         v-for="(step, index) in steps"
-        :key="index"
+        :key="step.sequenceNumber || `step-${index}-${step.type}`"
         class="step-item"
         :class="[
           `step-${step.type}`,
@@ -26,32 +26,12 @@
       >
         <!-- 步骤内容 -->
         <div class="step-content-wrapper">
-          <div class="step-header">
-            <div class="step-icon">
-              <el-icon v-if="iconMap[step.icon]">
-                <component :is="iconMap[step.icon]" />
-              </el-icon>
-            </div>
-            <div class="step-info">
-              <div class="step-title">{{ stepTitleMap[step.type] || step.title }}</div>
-              <el-tag v-if="step.skill" size="small" type="info" effect="plain" class="skill-tag">
-                {{ step.skill }}
-              </el-tag>
-            </div>
-            <div class="step-status">
-              <el-icon v-if="step.status === 'success'" class="status-icon success">
-                <CircleCheck />
-              </el-icon>
-              <el-icon v-else-if="step.status === 'error'" class="status-icon error">
-                <CircleClose />
-              </el-icon>
-              <el-icon v-else-if="step.status === 'process'" class="status-icon process">
-                <Loading />
-              </el-icon>
-            </div>
+          <div v-if="step.skill" class="step-skill-tag">
+            <el-tag size="small" type="info" effect="plain">
+              {{ step.skill }}
+            </el-tag>
           </div>
 
-          <!-- 步骤主体内容 -->
           <div class="step-body">
             <!-- 规划步骤 -->
             <PlanStep
@@ -97,10 +77,6 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import {
-  List, Opportunity, VideoPlay, View,
-  CircleCheck, CircleClose, Loading
-} from '@element-plus/icons-vue'
 import PlanStep from './PlanStep.vue'
 import ThinkingStep from './ThinkingStep.vue'
 import ActionStep from './ActionStep.vue'
@@ -110,21 +86,6 @@ const props = defineProps({
   steps: { type: Array, default: () => [] },
   stepCount: { type: Number, default: 0 }
 })
-
-const iconMap = {
-  List,
-  Opportunity,
-  VideoPlay,
-  View
-}
-
-// 步骤类型标题映射
-const stepTitleMap = {
-  plan: '规划子任务',
-  thinking: '策略考量',
-  action: '执行行动',
-  reflection: '反思总结'
-}
 
 // 折叠状态管理
 const expandedPlans = ref(new Set())
@@ -185,18 +146,6 @@ const toggleAction = (index) => {
   font-size: 14px;
   font-weight: 600;
   color: var(--color-text-primary);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.steps-title::before {
-  content: '';
-  display: block;
-  width: 4px;
-  height: 16px;
-  background: linear-gradient(180deg, var(--color-primary), var(--color-primary-light));
-  border-radius: 2px;
 }
 
 .steps-counter {
@@ -218,18 +167,17 @@ const toggleAction = (index) => {
 .step-item {
   display: flex;
   gap: 12px;
-  padding: 12px;
+  padding: 6px 10px;
   background: var(--color-background-soft);
-  border-radius: 12px;
-  border: 1px solid var(--color-border);
-  transition: all 0.3s ease;
+  border-radius: 8px;
+  transition: background 0.2s ease;
   position: relative;
   overflow: hidden;
+  min-height: 0;
 }
 
 .step-item:hover {
-  box-shadow: var(--shadow-md);
-  border-color: var(--color-primary-light);
+  background: var(--color-background-soft);
 }
 
 .step-item::before {
@@ -260,7 +208,6 @@ const toggleAction = (index) => {
 
 .step-item.step-error {
   background: rgba(239, 68, 68, 0.05);
-  border-color: rgba(239, 68, 68, 0.3);
 }
 
 .step-item.step-error::before {
@@ -271,68 +218,26 @@ const toggleAction = (index) => {
 .step-content-wrapper {
   flex: 1;
   min-width: 0;
-}
-
-/* 步骤头部 */
-.step-header {
+  min-height: 0;
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.step-icon {
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
-  font-size: 16px;
-  color: var(--color-text-secondary);
+  overflow: hidden;
 }
 
-.step-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.step-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-primary);
+.step-skill-tag {
   margin-bottom: 4px;
-}
-
-.skill-tag {
-  font-size: 11px;
-}
-
-/* 步骤状态 */
-.step-status {
   flex-shrink: 0;
-}
-
-.status-icon {
-  font-size: 18px;
-}
-
-.status-icon.success {
-  color: #10b981;
-}
-
-.status-icon.error {
-  color: #ef4444;
-}
-
-.status-icon.process {
-  color: var(--color-primary);
-  animation: spin 1s linear infinite;
 }
 
 /* 步骤主体 */
 .step-body {
-  padding-left: 0;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  overflow: hidden;
 }
 
 /* 加载占位符 */

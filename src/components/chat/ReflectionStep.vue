@@ -33,22 +33,31 @@ const formattedContent = computed(() => {
 
 <style scoped>
 .reflection-content {
-  background: rgba(245, 158, 11, 0.05);
-  border-radius: 8px;
-  padding: 10px 12px;
-  border: 1px solid rgba(245, 158, 11, 0.2);
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .reflection-label {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 600;
   color: #f59e0b;
-  margin-bottom: 6px;
+  background: rgba(245, 158, 11, 0.1);
+  padding: 2px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-right: 10px;
 }
 
 .reflection-text {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--color-text-primary);
   line-height: 1.6;
+  flex: 1;
+  min-width: 0;
 }
 </style>
