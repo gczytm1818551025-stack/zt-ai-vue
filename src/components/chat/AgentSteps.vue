@@ -6,23 +6,13 @@
     </div>
 
     <div class="steps-container">
-      <div v-if="steps.length === 0" class="loading-placeholder">
-        <div class="loading-animation">
-          <div class="pulse-ring"></div>
-          <div class="pulse-ring delay-1"></div>
-          <div class="pulse-ring delay-2"></div>
-        </div>
-        <div class="loading-content">
-          <div class="loading-text">{{ currentTip }}</div>
-          <div class="loading-dots">
-            <span></span><span></span><span></span>
-          </div>
-        </div>
+      <div v-if="steps.length === 0 && loading" class="loading-placeholder">
+        <div class="loading-text">{{ currentTip }}</div>
       </div>
 
       <div
         v-for="(step, index) in steps"
-        :key="step.sequenceNumber || `step-${index}-${step.type}`"
+        :key="`${step.type}-${step.sequenceNumber}-${index}`"
         class="step-item"
         :class="[
           `step-${step.type}`,
@@ -72,6 +62,10 @@
           </div>
         </div>
       </div>
+
+      <div v-if="loading" class="loading-progress-bar">
+        <div class="progress-glow"></div>
+      </div>
     </div>
   </div>
 </template>
@@ -85,7 +79,8 @@ import ReflectionStep from './ReflectionStep.vue'
 
 const props = defineProps({
   steps: { type: Array, default: () => [] },
-  stepCount: { type: Number, default: 0 }
+  stepCount: { type: Number, default: 0 },
+  loading: { type: Boolean, default: false }
 })
 
 const expandedPlans = ref(new Set())
@@ -259,97 +254,65 @@ const toggleAction = (index) => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 20px 16px;
+  padding: 16px 20px;
   gap: 12px;
-  background: linear-gradient(135deg, var(--color-background-soft) 0%, var(--color-background) 100%);
-  border-radius: 12px;
-  border: 1px solid var(--color-border);
-}
-
-.loading-animation {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.pulse-ring {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  border: 2px solid var(--color-primary);
-  opacity: 0;
-  animation: pulse-ring 2s ease-out infinite;
-}
-
-.pulse-ring.delay-1 {
-  animation-delay: 0.4s;
-}
-
-.pulse-ring.delay-2 {
-  animation-delay: 0.8s;
-}
-
-@keyframes pulse-ring {
-  0% {
-    transform: scale(0.5);
-    opacity: 0.8;
-  }
-  100% {
-    transform: scale(1.2);
-    opacity: 0;
-  }
-}
-
-.loading-content {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
+  background: transparent;
+  border-radius: 8px;
 }
 
 .loading-text {
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
   transition: opacity 0.3s ease;
 }
 
-.loading-dots {
-  display: flex;
-  gap: 3px;
+.loading-progress-bar {
+  width: 100%;
+  height: 4px;
+  margin-top: 8px;
+  background: linear-gradient(90deg, 
+    rgba(59, 130, 246, 0.1) 0%, 
+    rgba(59, 130, 246, 0.15) 50%, 
+    rgba(59, 130, 246, 0.1) 100%
+  );
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
 }
 
-.loading-dots span {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--color-primary);
-  animation: dot-bounce 1.4s ease-in-out infinite;
+.progress-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 30%;
+  height: 100%;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(59, 130, 246, 0.6) 30%, 
+    rgba(96, 165, 250, 0.9) 50%, 
+    rgba(59, 130, 246, 0.6) 70%, 
+    transparent 100%
+  );
+  border-radius: 2px;
+  animation: progress-slide 1.8s ease-in-out infinite, progress-breathe 1.8s ease-in-out infinite;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.5), 0 0 6px rgba(96, 165, 250, 0.3);
 }
 
-.loading-dots span:nth-child(1) {
-  animation-delay: 0s;
-}
-
-.loading-dots span:nth-child(2) {
-  animation-delay: 0.2s;
-}
-
-.loading-dots span:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
-@keyframes dot-bounce {
-  0%, 80%, 100% {
-    transform: scale(0.6);
-    opacity: 0.5;
+@keyframes progress-slide {
+  0% {
+    left: -30%;
   }
-  40% {
-    transform: scale(1);
+  100% {
+    left: 100%;
+  }
+}
+
+@keyframes progress-breathe {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
     opacity: 1;
   }
 }

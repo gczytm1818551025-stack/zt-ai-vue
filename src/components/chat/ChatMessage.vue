@@ -21,6 +21,7 @@
             v-show="!stepsCollapsed"
             :steps="message.steps"
             :step-count="message.stepCount"
+            :loading="loading"
           />
           <div v-if="message.content && !(loading && isLast && isWaitingForData)" class="text markdown-body" v-html="renderContent"></div>
           <span v-else-if="message.content && loading && isLast && !isWaitingForData" class="cursor">|</span>
@@ -76,7 +77,8 @@ const hasFinalContent = computed(() => {
 const stepsCollapsed = ref(false)
 
 const showCollapseHeader = computed(() => {
-  return hasFinalContent.value && props.message.steps && props.message.steps.length > 0
+  // 只要有步骤就显示折叠头，不依赖 content
+  return props.message.steps && props.message.steps.length > 0
 })
 
 const actionCount = computed(() => {

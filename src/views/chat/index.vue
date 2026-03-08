@@ -184,11 +184,23 @@ const resumeActiveSession = async (session) => {
     const lastMessage = messages.value[messages.value.length - 1]
     let aiMessageRef
 
-    if (lastMessage && lastMessage.role === 'server' && !lastMessage.content) {
+    if (lastMessage && lastMessage.role === 'server') {
       aiMessageRef = lastMessage
+      if (!aiMessageRef.steps) {
+        aiMessageRef.steps = []
+      }
+      if (!aiMessageRef.stepCount) {
+        aiMessageRef.stepCount = 0
+      }
       aiMessageRef.mode = 'task'
     } else {
-      aiMessageRef = reactive({ role: 'server', content: '', steps: [], mode: 'task' })
+      aiMessageRef = reactive({
+        role: 'server',
+        content: '',
+        steps: [],
+        stepCount: 0,
+        mode: 'task'
+      })
       messages.value.push(aiMessageRef)
     }
 

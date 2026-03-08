@@ -205,128 +205,141 @@ export function useChatStream() {
     return null
   }
 
-  const stepTypeMap = {
-    1: 'plan',
-    2: 'thinking',
-    3: 'action',
-    4: 'final'
-  }
-
   const handleReActEvent = (stage, eventData, aiMessageRef, onScroll, sessionId, seq) => {
     console.log('[ReAct] 收到事件:', { stage, seq, sessionId, eventData })
 
-    const dedupKey = `${sessionId}-${seq}`
-    const lastEvent = recentEvents.get(dedupKey)
-    const now = Date.now()
-
-    if (seq !== null && seq !== undefined && seq <= lastProcessedSeq) {
-      console.log('[ReAct] 序列号已处理过，跳过:', { seq, lastProcessedSeq })
+    // 只对相同事件进行严格去重
+    const dedupKey = `${sessionId}-${stage}-${seq}`
+    if (recentEvents.has(dedupKey)) {
+      console.log('[ReAct] 事件已处理过，跳过:', { seq, dedupKey })
       return
     }
 
-    if (lastEvent && (now - lastEvent.timestamp) < 30000) {
-      console.log('[ReAct] 30秒内已收到此事件，跳过:', { seq, dedupKey })
-      return
-    }
+    recentEvents.set(dedupKey, Date.now())
 
-    recentEvents.set(dedupKey, { seq, timestamp: now, stage })
+    // 更新最后处理的序列号
     if (seq !== null && seq !== undefined) {
       lastProcessedSeq = Math.max(lastProcessedSeq, seq)
     }
 
-    if (stage === 3) {
-      nextTick(() => {
-        processEvent(stage, eventData, aiMessageRef, seq)
-        if (onScroll) onScroll()
-      })
-    } else {
-      processEvent(stage, eventData, aiMessageRef, seq)
-      nextTick(() => {
-        if (onScroll) onScroll()
-      })
-    }
+    // 确保所有 stage 都触发滚动和视图更新
+    processEvent(stage, eventData, aiMessageRef, seq)
+    // 强制触发 DOM 更新
+    nextTick(() => {
+      console.log('[ReAct] DOM 更新后，steps 长度:', aiMessageRef.steps?.length)
+      if (onScroll) onScroll()
+    })
   }
 
   const processEvent = (stage, eventData, aiMessageRef, seq) => {
-    console.log('[ReAct] 处理事件:', { stage, eventData, seq })
-
-    if (!aiMessageRef.steps) aiMessageRef.steps = []
-
-    let newStepCount = aiMessageRef.stepCount || 0
-    let newSteps = [...aiMessageRef.steps]
-
-    switch (stage) {
-      case 0:
-        console.log('[ReAct] 处理子任务规划:', eventData)
-        newSteps.push({
-          type: stepTypeMap[1],
-          title: '规划子任务',
-          index: eventData.index,
-          taskContent: eventData.taskContent,
-          previousEvaluation: eventData.previousEvaluation,
-          memory: eventData.memory,
-          thinking: eventData.thinking,
-          icon: 'List',
-          status: 'success',
-          sequenceNumber: seq
-        })
-        console.log('[ReAct] 步骤添加后，steps 数量:', newSteps.length)
-        break
-
-      case 1:
-        console.log('[ReAct] 处理策略思考:', eventData)
-        newSteps.push({
-          type: stepTypeMap[2],
-          title: '思考策略',
-          thinkContent: eventData.thinkContent || '',
-          icon: 'Opportunity',
-          status: 'success',
-          sequenceNumber: seq
-        })
-        console.log('[ReAct] 步骤添加后，steps 数量:', newSteps.length)
-        break
-
-      case 2:
-        console.log('[ReAct] 处理行动结果:', eventData)
-        newSteps.push({
-          type: stepTypeMap[3],
-          title: '执行行动',
-          success: eventData.success,
-          result: eventData.result || '',
-          resultType: detectResultType(eventData.result),
-          icon: 'VideoPlay',
-          status: eventData.success ? 'success' : 'error',
-          sequenceNumber: seq
-        })
-        console.log('[ReAct] 步骤添加后，steps 数量:', newSteps.length)
-        newStepCount = newStepCount + 1
-        break
-
-      case 3:
-        console.log('[ReAct] 处理最终总结:', eventData)
-        let finalContent = ''
-        if (eventData && typeof eventData === 'object' && 'finalResult' in eventData) {
-          finalContent = eventData.finalResult
-        } else if (typeof eventData === 'string') {
-          finalContent = eventData
-        } else {
-          finalContent = JSON.stringify(eventData || {})
-        }
-        aiMessageRef.content = finalContent
-        console.log('[ReAct] 最终总结内容设置完成:', aiMessageRef.content)
-        break
-    }
-
-    newSteps.sort((a, b) => {
-      const seqA = a.sequenceNumber || 0
-      const seqB = b.sequenceNumber || 0
-      return seqA - seqB
+    console.log('[ReAct] processEvent 开始:', {
+      stage,
+      seq,
+      eventDataKeys: eventData ? Object.keys(eventData) : 'null',
+      eventData,
+      currentStepsLength: aiMessageRef.steps?.length || 0
     })
 
-    aiMessageRef.steps = newSteps
-    aiMessageRef.stepCount = newStepCount
+    // 确保 aiMessageRef.steps 是响应式的
+    if (!aiMessageRef.steps || !Array.isArray(aiMessageRef.steps)) {
+      console.log('[ReAct] 初始化 steps 数组')
+      aiMessageRef.steps = []
+    }
 
-    console.log('[ReAct] 事件处理完成，steps数量:', aiMessageRef.steps.length)
+    // 处理 finalResult（case 3）
+    if (stage === 3) {
+      console.log('[ReAct] 处理最终总结（stage 3）:', eventData)
+      let finalContent = ''
+      if (eventData && typeof eventData === 'object') {
+        // 尝试多种可能的字段名
+        finalContent = eventData.finalResult || eventData.result || eventData.content || ''
+      } else if (typeof eventData === 'string') {
+        finalContent = eventData
+      } else {
+        finalContent = JSON.stringify(eventData || {})
+      }
+      console.log('[ReAct] 最终总结内容:', { finalContent, length: finalContent.length })
+      aiMessageRef.content = finalContent
+      console.log('[ReAct] 最终总结设置后 content:', aiMessageRef.content)
+      return
+    }
+
+    const newStep = {
+      sequenceNumber: seq,
+      timestamp: Date.now()
+    }
+
+    try {
+      switch (stage) {
+        case 0:
+          console.log('[ReAct] 处理子任务规划（stage 0）:', eventData)
+          newStep.type = 'plan'
+          newStep.title = '规划子任务'
+          newStep.index = eventData?.index ?? 0
+          newStep.taskContent = eventData?.taskContent ?? ''
+          newStep.previousEvaluation = eventData?.previousEvaluation ?? ''
+          newStep.memory = eventData?.memory ?? ''
+          newStep.thinking = eventData?.thinking ?? ''
+          newStep.icon = 'List'
+          newStep.status = 'success'
+          break
+
+        case 1:
+          console.log('[ReAct] 处理策略思考（stage 1）:', eventData)
+          newStep.type = 'thinking'
+          newStep.title = '思考策略'
+          newStep.thinkContent = eventData?.thinkContent ?? ''
+          newStep.icon = 'Opportunity'
+          newStep.status = 'success'
+          break
+
+        case 2:
+          console.log('[ReAct] 处理行动结果（stage 2）:', eventData)
+          newStep.type = 'action'
+          newStep.title = '执行行动'
+          newStep.success = eventData?.success ?? false
+          newStep.result = eventData?.result ?? ''
+          newStep.resultType = detectResultType(eventData?.result)
+          newStep.icon = 'VideoPlay'
+          newStep.status = (eventData?.success ?? false) ? 'success' : 'error'
+          break
+      }
+
+      // 检查 step 是否有效
+      if (!newStep.type) {
+        console.warn('[ReAct] 步骤类型未设置，跳过添加:', { stage, newStep })
+        return
+      }
+
+      const currentSteps = aiMessageRef.steps || []
+      const existingIndex = currentSteps.findIndex(s => s.sequenceNumber === seq)
+
+      if (existingIndex === -1) {
+        // 使用 push 添加新步骤
+        currentSteps.push(newStep)
+        console.log('[ReAct] push 后 steps 长度:', currentSteps.length)
+        // 排序（原地排序）
+        currentSteps.sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))
+        console.log('[ReAct] sort 后 steps 长度:', currentSteps.length)
+        // 强制触发响应式更新
+        aiMessageRef.steps = [...currentSteps]
+        console.log('[ReAct] 强制更新后 steps:', aiMessageRef.steps.length)
+      } else {
+        console.log('[ReAct] 步骤已存在，跳过添加:', seq)
+      }
+
+      const actionCount = (aiMessageRef.steps || []).filter(s => s.type === 'action').length
+      aiMessageRef.stepCount = actionCount
+
+      console.log('[ReAct] processEvent 完成:', {
+        stepsCount: aiMessageRef.steps.length,
+        stepCount: aiMessageRef.stepCount,
+        contentLength: aiMessageRef.content?.length || 0
+      })
+
+    } catch (error) {
+      console.error('[ReAct] 处理事件时出错:', { stage, eventData, seq, error, errorStack: error.stack })
+    }
   }
 
   const detectResultType = (result) => {
