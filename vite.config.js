@@ -2,32 +2,55 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// https://vite.dev/config/
-export default defineConfig(({ mode, command }) => {
+export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd())
-  const { VITE_APP_BASE_API } = env
+  const { VITE_APP_BASE_API, VITE_APP_SERVER_URL } = env
 
   return {
-    plugins: [
-      vue(),
-    ],
+    plugins: [vue()],
+    base: '/',
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url))
-      },
+      }
+    },
+    css: {
+      preprocessorOptions: {
+        scss: {
+          api: 'modern-compiler'
+        }
+      }
     },
     server: {
-      host: '0.0.0.0', // 允许局域网访问
-      port: 5173,      // 指定前端端口
+      host: '0.0.0.0',
+      port: 5173,
       proxy: {
-        // 使用环境变量中的代理前缀
         [VITE_APP_BASE_API]: {
-          target: 'http://127.0.0.1:18081', 
-          changeOrigin: true, // 允许跨域
-          // 重写路径：去掉前缀
-          rewrite: (path) => path.replace(new RegExp(`^${VITE_APP_BASE_API}`), ''), 
+          target: VITE_APP_SERVER_URL || 'http://127.0.0.1:18081',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(new RegExp(`^${VITE_APP_BASE_API}`), ''),
           secure: false,
           ws: true
+        }
+      }
+    },
+    build: {
+      outDir: 'dist',
+      assetsDir: 'assets',
+      sourcemap: false,
+      minify: 'esbuild',
+      chunkSizeWarningLimit: 1500,
+      rollupOptions: {
+        output: {
+          chunkFileNames: 'assets/js/[name]-[hash].js',
+          entryFileNames: 'assets/js/[name]-[hash].js',
+          assetFileNames: 'assets/[ext]/[name]-[hash].[ext]',
+          manualChunks: {
+            vue: ['vue', 'vue-router', 'vuex'],
+            elementPlus: ['element-plus', '@element-plus/icons-vue'],
+            highlight: ['highlight.js'],
+            markdown: ['marked']
+          }
         }
       }
     }
