@@ -16,6 +16,7 @@ export function useChatStream() {
   let currentSessionId = null
 
   const recentEvents = new Map()
+  let lastProcessedSeq = -1
 
   const startChat = async (sessionId, question, aiMessageRef, onScroll, onComplete, chatType = 0, reactMode = false) => {
     closeConnection()
@@ -24,6 +25,8 @@ export function useChatStream() {
     connectionStatus.value = 'connecting'
     currentReactMode = reactMode
     currentSessionId = sessionId  // 保存当前会话 ID
+    lastProcessedSeq = -1  // 重置序列号，避免不同会话之间冲突
+    recentEvents.clear()  // 清空事件缓存
 
     abortController = new AbortController()
     const token = store.state.token
@@ -104,7 +107,8 @@ export function useChatStream() {
               } else if (eventData && typeof eventData.thinkContent === 'string') {
                 contentToAdd = eventData.thinkContent
               }
-              aiMessageRef.content += contentToAdd
+              const newContent = aiMessageRef.content + contentToAdd
+              Object.assign(aiMessageRef, { content: newContent })
               nextTick(() => {
                 if (onScroll) onScroll()
               })
@@ -122,8 +126,12 @@ export function useChatStream() {
         console.error('SSE connection error:', err)
         connectionStatus.value = 'error'
         finishGeneration()
+        throw err
       },
       onclose() {
+        if (generating.value) {
+          console.log('[SSE] 连接意外关闭，可能是服务器端问题')
+        }
         finishGeneration()
       }
     })
@@ -215,17 +223,27 @@ export function useChatStream() {
   const handleReActEvent = (stage, eventData, aiMessageRef, onScroll, sessionId, seq) => {
     console.log('[ReAct] 收到事件:', { stage, seq, sessionId, eventData })
 
-    // 优化去重逻辑：使用 sessionId-stage-seq 作为唯一key，避免 finalResult 被误过滤
-    const dedupKey = `${sessionId}-${stage}-${seq}`
+    // 优化去重逻辑：使用 sessionId-seq 作为唯一key（seq 由后端生成，全局唯一）
+    const dedupKey = `${sessionId}-${seq}`
     const lastEvent = recentEvents.get(dedupKey)
     const now = Date.now()
 
-    if (lastEvent && (now - lastEvent.timestamp) < 30000) {
-      console.log('[ReAct] 30秒内已收到此事件，跳过:', { stage, seq, dedupKey })
+    // 如果序列号已经被处理过，跳过（更可靠的去重方式）
+    if (seq !== null && seq !== undefined && seq <= lastProcessedSeq) {
+      console.log('[ReAct] 序列号已处理过，跳过:', { seq, lastProcessedSeq })
       return
     }
 
-    recentEvents.set(dedupKey, { seq, timestamp: now })
+    // 如果同一 key 在短时间内重复，跳过
+    if (lastEvent && (now - lastEvent.timestamp) < 30000) {
+      console.log('[ReAct] 30秒内已收到此事件，跳过:', { seq, dedupKey })
+      return
+    }
+
+    recentEvents.set(dedupKey, { seq, timestamp: now, stage })
+    if (seq !== null && seq !== undefined) {
+      lastProcessedSeq = Math.max(lastProcessedSeq, seq)
+    }
 
     // 对于 finalResult (stage=3 FINAL_SUMMARY)，使用 nextTick 确保响应式更新
     if (stage === 3) {
@@ -247,11 +265,12 @@ export function useChatStream() {
     if (!aiMessageRef.steps) aiMessageRef.steps = []
 
     let newStepCount = aiMessageRef.stepCount || 0
+    let newSteps = [...aiMessageRef.steps]
 
     switch (stage) {
       case 0:
         console.log('[ReAct] 处理子任务规划:', eventData)
-        aiMessageRef.steps.push({
+        newSteps.push({
           type: stepTypeMap[1],
           title: '规划子任务',
           index: eventData.index,
@@ -263,12 +282,12 @@ export function useChatStream() {
           status: 'success',
           sequenceNumber: seq
         })
-        console.log('[ReAct] 步骤添加后，steps 数量:', aiMessageRef.steps.length)
+        console.log('[ReAct] 步骤添加后，steps 数量:', newSteps.length)
         break
 
       case 1:
         console.log('[ReAct] 处理策略思考:', eventData)
-        aiMessageRef.steps.push({
+        newSteps.push({
           type: stepTypeMap[2],
           title: '思考策略',
           thinkContent: eventData.thinkContent || '',
@@ -276,12 +295,12 @@ export function useChatStream() {
           status: 'success',
           sequenceNumber: seq
         })
-        console.log('[ReAct] 步骤添加后，steps 数量:', aiMessageRef.steps.length)
+        console.log('[ReAct] 步骤添加后，steps 数量:', newSteps.length)
         break
 
       case 2:
         console.log('[ReAct] 处理行动结果:', eventData)
-        aiMessageRef.steps.push({
+        newSteps.push({
           type: stepTypeMap[3],
           title: '执行行动',
           success: eventData.success,
@@ -291,9 +310,8 @@ export function useChatStream() {
           status: eventData.success ? 'success' : 'error',
           sequenceNumber: seq
         })
-        console.log('[ReAct] 步骤添加后，steps 数量:', aiMessageRef.steps.length)
+        console.log('[ReAct] 步骤添加后，steps 数量:', newSteps.length)
         newStepCount = newStepCount + 1
-        aiMessageRef.stepCount = newStepCount
         break
 
       case 3:  // FINAL_SUMMARY (与后端 ReActStageEnum 保持一致)
@@ -313,11 +331,14 @@ export function useChatStream() {
     }
 
     // 按 sequenceNumber 排序
-    aiMessageRef.steps.sort((a, b) => {
+    newSteps.sort((a, b) => {
       const seqA = a.sequenceNumber || 0
       const seqB = b.sequenceNumber || 0
       return seqA - seqB
     })
+
+    // 使用 Object.assign 确保触发 Vue 响应式更新
+    Object.assign(aiMessageRef, { steps: newSteps, stepCount: newStepCount })
 
     console.log('[ReAct] 事件处理完成，steps数量:', aiMessageRef.steps.length)
   }

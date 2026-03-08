@@ -137,9 +137,16 @@ const toggle = () => {
   gap: 6px;
 }
 
+.plan-state {
+  padding: 0 0;
+  margin-top: 0;
+  border-top: 1px solid transparent;
+  transition: padding 0.2s ease, margin 0.2s ease, border-color 0.2s ease;
+}
+
 .collapse-wrapper.expanded .plan-state {
   padding: 10px 0;
-  border-top: 1px solid rgba(59, 130, 246, 0.1);
+  border-top-color: rgba(59, 130, 246, 0.1);
   margin-top: 8px;
 }
 

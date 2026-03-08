@@ -135,6 +135,11 @@ const renderMarkdown = (markdown) => {
 
 .action-result {
   border-radius: 8px;
+  padding: 0;
+  margin-top: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  transition: padding 0.2s ease, margin 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
 .collapse-wrapper.expanded .action-result {
@@ -143,13 +148,13 @@ const renderMarkdown = (markdown) => {
 }
 
 .collapse-wrapper.expanded .action-result:not(.action-result-error) {
+  border-color: rgba(16, 185, 129, 0.15);
   background: rgba(16, 185, 129, 0.06);
-  border: 1px solid rgba(16, 185, 129, 0.15);
 }
 
 .collapse-wrapper.expanded .action-result-error {
+  border-color: rgba(239, 68, 68, 0.15);
   background: rgba(239, 68, 68, 0.06);
-  border: 1px solid rgba(239, 68, 68, 0.15);
 }
 
 .action-result .result-label {
