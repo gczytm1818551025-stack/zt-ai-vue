@@ -9,7 +9,7 @@
 
 ## 核心架构
 
-智瞳AI前端是基于 `Vue 3` 的现代化单页应用（SPA），使用了 `Vite` 作为构建工具，具备高效的开发体验和性能。整个架构围绕着组件化、响应式数据流和与后端服务的实时通信来设计。
+智瞳AI前端是基于 `Vue 3` 的现代化单页应用（SPA），使用了 `Vite 6` 作为构建工具，具备高效的开发体验和性能。整个架构围绕着组件化、响应式数据流和与后端服务的实时通信来设计。
 
 ### 架构图
 
@@ -50,13 +50,13 @@ graph TD
     - 使用 `beforeEach` 导航守卫实现了路由级别的认证，未登录用户访问受保护页面时会自动跳转到登录页。
   - **`store/`**: **状态管理**
     - `index.js`: 使用 `Vuex` 进行全局状态管理，主要包括：
-      - `token`: 用户登录凭证
+      - `token`: 用户登录凭证（JWT），自动检测过期
       - `userInfo`: 用户信息（如昵称）
       - `theme`: 当前主题设置（light/dark）
     - `sessionTypeCache.js`: 会话类型缓存模块，独立于Vuex，使用Map存储会话类型（CHAT/AGENT）。
   - **`views/`**: **视图层**
     - `Login.vue`: 登录页面，支持手机号+验证码登录，包含主题切换功能。
-    - `chat/index.vue`: 核心聊天界面，整合侧边栏、消息列表和输入组件，管理会话状态和消息流。
+    - `chat/index.vue`: 核心聊天界面，整合侧边栏、消息列表和输入组件，管理会话状态和消息流。支持ReAct会话恢复功能。
   - **`components/`**: **组件层**
     - `chat/`: 聊天相关组件
       - `ChatSidebar.vue`: 侧边栏，显示会话列表，支持创建、选择、重命名、删除会话。
@@ -71,7 +71,7 @@ graph TD
   - **`api/`**: **API与业务逻辑层**
     - **`composables/`**: 存放了核心的组合式函数，是业务逻辑的主要载体。
       - `useChatSession.js`: 封装了所有与会话管理相关的逻辑（创建、查询、更新、删除、切换会话，获取会话详情和ReAct状态）。
-      - `useChatStream.js`: **核心中的核心**。封装了与后端SSE端点进行实时通信的全部复杂性，使用 `@microsoft/fetch-event-source` 库建立连接、接收事件、处理数据，支持普通Chat模式和ReAct(Task)模式。
+      - `useChatStream.js`: **核心中的核心**。封装了与后端SSE端点进行实时通信的全部复杂性，使用 `@microsoft/fetch-event-source` 库建立连接、接收事件、处理数据，支持普通Chat模式和ReAct(Task)模式，支持会话恢复和事件去重。
     - `chat.js`: 会话和聊天相关的API接口定义。
     - `user.js`: 用户认证相关API（发送验证码、登录）。
     - `content.js`: 内容相关API。
@@ -93,6 +93,10 @@ graph TD
 ### 实时通信
 
 通过 **Server-Sent Events (SSE)** 与后端进行实时通信，完美适配了ReAct模式下逐步返回思考和行动结果的场景。
+
+### 会话恢复
+
+支持ReAct会话的断线重连。当用户切换到正在进行中的ReAct会话时，前端会自动恢复SSE连接，继续接收后续事件。
 
 ### SSE 通信流程图
 
@@ -207,15 +211,15 @@ npm run preview
 
 ## 技术栈
 
-- **框架**: Vue 3 (Composition API)
-- **构建工具**: Vite 6
-- **状态管理**: Vuex 4
-- **路由**: Vue Router 4
-- **UI组件库**: Element Plus
-- **HTTP客户端**: Axios
-- **SSE客户端**: @microsoft/fetch-event-source
-- **Markdown渲染**: marked + highlight.js
-- **样式**: CSS Variables + Scoped CSS
+- **框架**: Vue 3.5 (Composition API)
+- **构建工具**: Vite 6.2
+- **状态管理**: Vuex 4.1
+- **路由**: Vue Router 4.6
+- **UI组件库**: Element Plus 2.13
+- **HTTP客户端**: Axios 1.13
+- **SSE客户端**: @microsoft/fetch-event-source 2.0.1
+- **Markdown渲染**: marked 17.0 + highlight.js 11.11
+- **样式**: CSS Variables + Scoped CSS + Sass
 
 ## 项目结构
 
