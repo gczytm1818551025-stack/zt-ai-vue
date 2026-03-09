@@ -296,6 +296,7 @@ const onRegenerate = async () => {
       role: 'server',
       content: '',
       steps: [],
+      stepCount: 0,
       mode: isTaskMode ? 'task' : 'chat'
     })
     messages.value.push(aiMessage)

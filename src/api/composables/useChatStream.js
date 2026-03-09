@@ -13,9 +13,10 @@ export function useChatStream() {
   let onCompleteCallback = null
   let currentReactMode = false
   let currentSessionId = null
+  let currentRequestId = 0
+  let lastProcessedSeq = -1
 
   const recentEvents = new Map()
-  let lastProcessedSeq = -1
 
   const startChat = async (sessionId, question, aiMessageRef, onScroll, onComplete, chatType = 0, reactMode = false) => {
     closeConnection()
@@ -23,9 +24,11 @@ export function useChatStream() {
     generating.value = true
     currentReactMode = reactMode
     currentSessionId = sessionId
+    currentRequestId = Date.now()
     lastProcessedSeq = -1
     recentEvents.clear()
 
+    const requestId = currentRequestId
     abortController = new AbortController()
     const token = store.state.token
 
@@ -38,16 +41,23 @@ export function useChatStream() {
       ? { sessionId, type: 0 }
       : { sessionId, question, type: chatType }
 
-    if (reactMode && chatType === 0) {
-      console.log('[ReAct] 新对话：重置消息状态')
-      aiMessageRef.content = ''
-      aiMessageRef.steps = []
-      aiMessageRef.stepCount = 0
-    } else if (reactMode && chatType === 2) {
-      console.log('[ReAct] 恢复连接：保留现有消息状态', {
-        stepsCount: aiMessageRef.steps?.length || 0,
-        stepCount: aiMessageRef.stepCount || 0
-      })
+    if (reactMode) {
+      if (chatType === 0) {
+        console.log('[ReAct] 新对话：重置消息状态')
+        aiMessageRef.content = ''
+        aiMessageRef.steps.splice(0, aiMessageRef.steps.length)
+        aiMessageRef.stepCount = 0
+      } else if (chatType === 1) {
+        console.log('[ReAct] 重新生成：重置消息状态')
+        aiMessageRef.content = ''
+        aiMessageRef.steps.splice(0, aiMessageRef.steps.length)
+        aiMessageRef.stepCount = 0
+      } else if (chatType === 2) {
+        console.log('[ReAct] 恢复连接：保留现有消息状态', {
+          stepsCount: aiMessageRef.steps?.length || 0,
+          stepCount: aiMessageRef.stepCount || 0
+        })
+      }
     }
 
     try {
@@ -94,7 +104,7 @@ export function useChatStream() {
               handleReActEvent(stage, eventData, aiMessageRef, onScroll, sessionId, seq)
             } else if (eventType === EventTypeEnum.STOP) {
               console.log('[ReAct] 对话完成')
-              finishGeneration()
+              finishGeneration(requestId)
             }
           } else {
             if (eventType === EventTypeEnum.DATA && eventData) {
@@ -109,7 +119,7 @@ export function useChatStream() {
                 if (onScroll) onScroll()
               })
             } else if (eventType === EventTypeEnum.STOP) {
-              finishGeneration()
+              finishGeneration(requestId)
             } else if (eventType === EventTypeEnum.PARAM) {
               console.log('Param event:', eventData)
             }
@@ -120,14 +130,14 @@ export function useChatStream() {
       },
       onerror(err) {
         console.error('SSE connection error:', err)
-        finishGeneration()
+        finishGeneration(requestId)
         throw err
       },
       onclose() {
         if (generating.value) {
           console.log('[SSE] 连接意外关闭，可能是服务器端问题')
         }
-        finishGeneration()
+        finishGeneration(requestId)
       }
     })
   } catch (error) {
@@ -166,7 +176,11 @@ export function useChatStream() {
     }
   }
 
-  const finishGeneration = () => {
+  const finishGeneration = (requestId = null) => {
+    if (requestId && requestId !== currentRequestId) {
+      console.log('[ReAct] 忽略旧请求的 finishGeneration 调用:', { requestId, currentRequestId })
+      return
+    }
     generating.value = false
     if (onCompleteCallback) {
       onCompleteCallback()
@@ -240,24 +254,21 @@ export function useChatStream() {
       currentStepsLength: aiMessageRef.steps?.length || 0
     })
 
-    // 确保 aiMessageRef.steps 是响应式的
-    if (!aiMessageRef.steps || !Array.isArray(aiMessageRef.steps)) {
+    if (!aiMessageRef.steps) {
       console.log('[ReAct] 初始化 steps 数组')
+      aiMessageRef.steps = []
+    }
+    if (!Array.isArray(aiMessageRef.steps)) {
+      console.log('[ReAct] steps 不是数组，重新初始化')
       aiMessageRef.steps = []
     }
 
     // 处理 finalResult（case 3）
     if (stage === 3) {
       console.log('[ReAct] 处理最终总结（stage 3）:', eventData)
-      let finalContent = ''
-      if (eventData && typeof eventData === 'object') {
-        // 尝试多种可能的字段名
-        finalContent = eventData.finalResult || eventData.result || eventData.content || ''
-      } else if (typeof eventData === 'string') {
-        finalContent = eventData
-      } else {
-        finalContent = JSON.stringify(eventData || {})
-      }
+      const finalContent = (eventData && typeof eventData === 'object')
+        ? (eventData.finalResult || eventData.result || eventData.content || '')
+        : (typeof eventData === 'string' ? eventData : JSON.stringify(eventData || {}))
       console.log('[ReAct] 最终总结内容:', { finalContent, length: finalContent.length })
       aiMessageRef.content = finalContent
       console.log('[ReAct] 最终总结设置后 content:', aiMessageRef.content)
@@ -305,30 +316,24 @@ export function useChatStream() {
           break
       }
 
-      // 检查 step 是否有效
       if (!newStep.type) {
         console.warn('[ReAct] 步骤类型未设置，跳过添加:', { stage, newStep })
         return
       }
 
-      const currentSteps = aiMessageRef.steps || []
-      const existingIndex = currentSteps.findIndex(s => s.sequenceNumber === seq)
+      const existingIndex = aiMessageRef.steps.findIndex(s => s.sequenceNumber === seq)
 
       if (existingIndex === -1) {
-        // 使用 push 添加新步骤
-        currentSteps.push(newStep)
-        console.log('[ReAct] push 后 steps 长度:', currentSteps.length)
-        // 排序（原地排序）
-        currentSteps.sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))
-        console.log('[ReAct] sort 后 steps 长度:', currentSteps.length)
-        // 强制触发响应式更新
-        aiMessageRef.steps = [...currentSteps]
-        console.log('[ReAct] 强制更新后 steps:', aiMessageRef.steps.length)
+        aiMessageRef.steps.push(newStep)
+        console.log('[ReAct] push 后 steps 长度:', aiMessageRef.steps.length)
+        
+        aiMessageRef.steps.sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))
+        console.log('[ReAct] sort 后 steps 长度:', aiMessageRef.steps.length)
       } else {
         console.log('[ReAct] 步骤已存在，跳过添加:', seq)
       }
 
-      const actionCount = (aiMessageRef.steps || []).filter(s => s.type === 'action').length
+      const actionCount = aiMessageRef.steps.filter(s => s.type === 'action').length
       aiMessageRef.stepCount = actionCount
 
       console.log('[ReAct] processEvent 完成:', {
