@@ -74,7 +74,6 @@ graph TD
       - `useChatStream.js`: **核心中的核心**。封装了与后端SSE端点进行实时通信的全部复杂性，使用 `@microsoft/fetch-event-source` 库建立连接、接收事件、处理数据，支持普通Chat模式和ReAct(Task)模式，支持会话恢复和事件去重。
     - `chat.js`: 会话和聊天相关的API接口定义。
     - `user.js`: 用户认证相关API（发送验证码、登录）。
-    - `content.js`: 内容相关API。
     - `request.js`: 封装了 `axios`，提供请求/响应拦截器，自动附加认证Token，处理401等错误状态。
   - **`utils/`**: 工具函数目录
     - `request.js`: Axios请求封装。
@@ -230,8 +229,7 @@ zt-ai-vue/
 │   ├── api/               # API层
 │   │   ├── composables/   # 组合式函数
 │   │   ├── chat.js        # 聊天API
-│   │   ├── user.js        # 用户API
-│   │   └── content.js     # 内容API
+│   │   └── user.js        # 用户API
 │   ├── assets/            # 静态资源（样式、图片）
 │   ├── components/        # 组件
 │   │   ├── chat/          # 聊天相关组件
