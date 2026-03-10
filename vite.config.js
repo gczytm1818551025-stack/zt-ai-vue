@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
       }
     },
     server: {
-      host: '0.0.0.0',
+      host: '0.0.0.0', // 部署在所有网卡接口ip上
       port: 5173,
       proxy: {
         [VITE_APP_BASE_API]: {

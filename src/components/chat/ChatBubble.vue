@@ -8,7 +8,7 @@
             <div class="typing-dot"></div>
             <div class="typing-dot"></div>
           </div>
-          <div class="loading-hint">智能思考中</div>
+          <div class="loading-hint">智能处理中</div>
         </div>
         <template v-else-if="content">
           <div class="text markdown-body" v-html="renderedContent"></div>

@@ -1,6 +1,6 @@
 {
-  "name": "vue-browser-use",
-  "version": "0.0.0",
+  "name": "zt-ai-vue",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
