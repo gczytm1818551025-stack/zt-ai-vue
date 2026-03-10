@@ -17,6 +17,7 @@ export function useChatStream() {
   let lastProcessedSeq = -1
 
   const recentEvents = new Map()
+  const processedEventCount = new Map()
 
   const startChat = async (sessionId, question, aiMessageRef, onScroll, onComplete, chatType = 0, reactMode = false) => {
     closeConnection()
@@ -27,6 +28,7 @@ export function useChatStream() {
     currentRequestId = Date.now()
     lastProcessedSeq = -1
     recentEvents.clear()
+    processedEventCount.clear()
 
     const requestId = currentRequestId
     abortController = new AbortController()
@@ -45,18 +47,29 @@ export function useChatStream() {
       if (chatType === 0) {
         console.log('[ReAct] 新对话：重置消息状态')
         aiMessageRef.content = ''
-        aiMessageRef.steps.splice(0, aiMessageRef.steps.length)
+        if (aiMessageRef.steps) {
+          aiMessageRef.steps.splice(0, aiMessageRef.steps.length)
+        } else {
+          aiMessageRef.steps = []
+        }
         aiMessageRef.stepCount = 0
       } else if (chatType === 1) {
         console.log('[ReAct] 重新生成：重置消息状态')
         aiMessageRef.content = ''
-        aiMessageRef.steps.splice(0, aiMessageRef.steps.length)
+        if (aiMessageRef.steps) {
+          aiMessageRef.steps.splice(0, aiMessageRef.steps.length)
+        } else {
+          aiMessageRef.steps = []
+        }
         aiMessageRef.stepCount = 0
       } else if (chatType === 2) {
         console.log('[ReAct] 恢复连接：保留现有消息状态', {
           stepsCount: aiMessageRef.steps?.length || 0,
           stepCount: aiMessageRef.stepCount || 0
         })
+        if (!aiMessageRef.steps) {
+          aiMessageRef.steps = []
+        }
       }
     }
 
@@ -99,7 +112,7 @@ export function useChatStream() {
           })
 
           if (reactMode) {
-            if (eventType === EventTypeEnum.DATA && eventData) {
+            if (eventType === EventTypeEnum.DATA) {
               console.log('[ReAct] 处理事件:', { stage, eventData, seq, sessionId })
               handleReActEvent(stage, eventData, aiMessageRef, onScroll, sessionId, seq)
             } else if (eventType === EventTypeEnum.STOP) {
@@ -107,17 +120,29 @@ export function useChatStream() {
               finishGeneration(requestId)
             }
           } else {
-            if (eventType === EventTypeEnum.DATA && eventData) {
+            if (eventType === EventTypeEnum.DATA && eventData !== null && eventData !== undefined) {
               let contentToAdd = ''
               if (typeof eventData === 'string') {
                 contentToAdd = eventData
-              } else if (eventData && typeof eventData.thinkContent === 'string') {
-                contentToAdd = eventData.thinkContent
+              } else if (typeof eventData === 'object') {
+                if (eventData.thinkContent && typeof eventData.thinkContent === 'string') {
+                  contentToAdd = eventData.thinkContent
+                } else if (eventData.content && typeof eventData.content === 'string') {
+                  contentToAdd = eventData.content
+                } else if (eventData.text && typeof eventData.text === 'string') {
+                  contentToAdd = eventData.text
+                } else if (eventData.result && typeof eventData.result === 'string') {
+                  contentToAdd = eventData.result
+                } else {
+                  console.log('[Chat] 未知的对象格式 eventData:', eventData)
+                }
               }
-              aiMessageRef.content = aiMessageRef.content + contentToAdd
-              nextTick(() => {
-                if (onScroll) onScroll()
-              })
+              if (contentToAdd) {
+                aiMessageRef.content = aiMessageRef.content + contentToAdd
+                nextTick(() => {
+                  if (onScroll) onScroll()
+                })
+              }
             } else if (eventType === EventTypeEnum.STOP) {
               finishGeneration(requestId)
             } else if (eventType === EventTypeEnum.PARAM) {
@@ -134,9 +159,7 @@ export function useChatStream() {
         throw err
       },
       onclose() {
-        if (generating.value) {
-          console.log('[SSE] 连接意外关闭，可能是服务器端问题')
-        }
+        console.log('[SSE] 连接关闭, generating:', generating.value)
         finishGeneration(requestId)
       }
     })
@@ -181,6 +204,7 @@ export function useChatStream() {
       console.log('[ReAct] 忽略旧请求的 finishGeneration 调用:', { requestId, currentRequestId })
       return
     }
+    console.log('[Stream] finishGeneration 被调用, requestId:', requestId)
     generating.value = false
     if (onCompleteCallback) {
       onCompleteCallback()
@@ -220,25 +244,39 @@ export function useChatStream() {
   }
 
   const handleReActEvent = (stage, eventData, aiMessageRef, onScroll, sessionId, seq) => {
-    console.log('[ReAct] 收到事件:', { stage, seq, sessionId, eventData })
+    console.log('[ReAct] handleReActEvent:', { stage, seq, sessionId, eventData })
 
-    // 只对相同事件进行严格去重
-    const dedupKey = `${sessionId}-${stage}-${seq}`
-    if (recentEvents.has(dedupKey)) {
-      console.log('[ReAct] 事件已处理过，跳过:', { seq, dedupKey })
+    if (stage === null || stage === undefined) {
+      console.warn('[ReAct] stage 为空，跳过事件')
       return
     }
 
-    recentEvents.set(dedupKey, Date.now())
+    const hasSeq = seq !== null && seq !== undefined
+    let shouldSkip = false
 
-    // 更新最后处理的序列号
+    if (hasSeq) {
+      const dedupKey = `${sessionId}-${stage}-${seq}`
+      if (recentEvents.has(dedupKey)) {
+        console.log('[ReAct] 事件已处理过，跳过:', { seq, dedupKey })
+        shouldSkip = true
+      } else {
+        recentEvents.set(dedupKey, Date.now())
+      }
+    } else {
+      const countKey = `${sessionId}-${stage}`
+      const currentCount = processedEventCount.get(countKey) || 0
+      processedEventCount.set(countKey, currentCount + 1)
+      console.log('[ReAct] 无序列号的事件, stage:', stage, 'count:', currentCount + 1)
+    }
+
+    if (shouldSkip) return
+
     if (seq !== null && seq !== undefined) {
       lastProcessedSeq = Math.max(lastProcessedSeq, seq)
     }
 
-    // 确保所有 stage 都触发滚动和视图更新
     processEvent(stage, eventData, aiMessageRef, seq)
-    // 强制触发 DOM 更新
+    
     nextTick(() => {
       console.log('[ReAct] DOM 更新后，steps 长度:', aiMessageRef.steps?.length)
       if (onScroll) onScroll()
@@ -263,12 +301,14 @@ export function useChatStream() {
       aiMessageRef.steps = []
     }
 
-    // 处理 finalResult（case 3）
     if (stage === 3) {
       console.log('[ReAct] 处理最终总结（stage 3）:', eventData)
-      const finalContent = (eventData && typeof eventData === 'object')
-        ? (eventData.finalResult || eventData.result || eventData.content || '')
-        : (typeof eventData === 'string' ? eventData : JSON.stringify(eventData || {}))
+      let finalContent = ''
+      if (eventData && typeof eventData === 'object') {
+        finalContent = eventData.finalResult || eventData.result || eventData.content || ''
+      } else if (typeof eventData === 'string') {
+        finalContent = eventData
+      }
       console.log('[ReAct] 最终总结内容:', { finalContent, length: finalContent.length })
       aiMessageRef.content = finalContent
       console.log('[ReAct] 最终总结设置后 content:', aiMessageRef.content)
@@ -276,7 +316,7 @@ export function useChatStream() {
     }
 
     const newStep = {
-      sequenceNumber: seq,
+      sequenceNumber: seq !== null && seq !== undefined ? seq : Date.now(),
       timestamp: Date.now()
     }
 
@@ -314,6 +354,10 @@ export function useChatStream() {
           newStep.icon = 'VideoPlay'
           newStep.status = (eventData?.success ?? false) ? 'success' : 'error'
           break
+
+        default:
+          console.warn('[ReAct] 未知的 stage:', stage)
+          return
       }
 
       if (!newStep.type) {
@@ -321,7 +365,10 @@ export function useChatStream() {
         return
       }
 
-      const existingIndex = aiMessageRef.steps.findIndex(s => s.sequenceNumber === seq)
+      const existingIndex = aiMessageRef.steps.findIndex(s => 
+        s.sequenceNumber === newStep.sequenceNumber && 
+        s.type === newStep.type
+      )
 
       if (existingIndex === -1) {
         aiMessageRef.steps.push(newStep)
@@ -330,7 +377,7 @@ export function useChatStream() {
         aiMessageRef.steps.sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))
         console.log('[ReAct] sort 后 steps 长度:', aiMessageRef.steps.length)
       } else {
-        console.log('[ReAct] 步骤已存在，跳过添加:', seq)
+        console.log('[ReAct] 步骤已存在，跳过添加:', newStep.sequenceNumber)
       }
 
       const actionCount = aiMessageRef.steps.filter(s => s.type === 'action').length

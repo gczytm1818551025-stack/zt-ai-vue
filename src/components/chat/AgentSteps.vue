@@ -63,7 +63,7 @@
         </div>
       </div>
 
-      <div v-if="loading" class="loading-progress-bar">
+      <div v-if="loading && showProgress" class="loading-progress-bar">
         <div class="progress-glow"></div>
       </div>
     </div>
@@ -80,7 +80,8 @@ import ReflectionStep from './ReflectionStep.vue'
 const props = defineProps({
   steps: { type: Array, default: () => [] },
   stepCount: { type: Number, default: 0 },
-  loading: { type: Boolean, default: false }
+  loading: { type: Boolean, default: false },
+  showProgress: { type: Boolean, default: true }
 })
 
 const expandedPlans = ref(new Set())

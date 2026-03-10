@@ -1,8 +1,8 @@
 <template>
   <div class="message-row" :class="[message.role, { 'loading-glow': loading && message.role === 'server' && isTaskMode }]">
-    <div class="chat-content-wrapper" :class="{ 'full-width': message.role === 'server' && isTaskMode }">
+    <div class="chat-content-wrapper" :class="{ 'full-width': message.role === 'server' && isTaskMode && (hasSteps || hasFinalContent) }">
       <template v-if="message.role === 'server' && isTaskMode">
-        <div class="bubble server" :class="{ 'has-steps': hasSteps }">
+        <div class="bubble server" :class="{ 'has-steps': hasSteps || isInitialLoading, 'initial-bubble': isInitialLoading }">
           <div
             v-if="showCollapseHeader"
             class="collapse-header"
@@ -17,14 +17,31 @@
             </div>
           </div>
 
-          <AgentSteps
-            v-show="!stepsCollapsed"
-            :steps="message.steps"
-            :step-count="message.stepCount"
-            :loading="loading"
-          />
-          <div v-if="message.content && !(loading && isLast && isWaitingForData)" class="text markdown-body" v-html="renderContent"></div>
-          <span v-else-if="message.content && loading && isLast && !isWaitingForData" class="cursor">|</span>
+          <div v-if="isInitialLoading" class="initial-loading-container">
+            <div class="initial-loading-content">
+              <div class="loading-animation">
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+              </div>
+              <div class="loading-hint">{{ loadingHint }}</div>
+            </div>
+          </div>
+
+          <template v-else>
+            <AgentSteps
+              v-show="!stepsCollapsed"
+              :steps="message.steps"
+              :step-count="message.stepCount"
+              :loading="loading"
+              :show-progress="false"
+            />
+            <div v-if="loading && hasSteps" class="loading-progress-bar">
+              <div class="progress-glow"></div>
+            </div>
+            <div v-if="message.content && !(loading && isLast && isWaitingForData)" class="text markdown-body" v-html="renderContent"></div>
+            <span v-else-if="message.content && loading && isLast && !isWaitingForData" class="cursor">|</span>
+          </template>
         </div>
 
         <div class="actions" v-if="!loading">
@@ -74,10 +91,28 @@ const hasFinalContent = computed(() => {
   return props.message.content && props.message.content.length > 0
 })
 
+const isInitialLoading = computed(() => {
+  if (!props.loading) return false
+  if (props.message.role !== 'server') return false
+  if (!isTaskMode.value) return false
+  const hasNoSteps = !props.message.steps || props.message.steps.length === 0
+  const hasNoContent = !props.message.content || props.message.content.length === 0
+  return hasNoSteps && hasNoContent
+})
+
+const loadingHint = computed(() => {
+  const hints = [
+    '正在分析任务...',
+    '规划执行步骤...',
+    '准备调用工具...',
+    '思考解决方案...'
+  ]
+  return hints[Math.floor(Date.now() / 2000) % hints.length]
+})
+
 const stepsCollapsed = ref(false)
 
 const showCollapseHeader = computed(() => {
-  // 只要有步骤就显示折叠头，不依赖 content
   return props.message.steps && props.message.steps.length > 0
 })
 
@@ -86,7 +121,12 @@ const actionCount = computed(() => {
   return props.message.steps.filter(s => s.type === 'action').length
 })
 
-watch(hasFinalContent, (newVal) => {
+const hasFinalSummary = computed(() => {
+  if (!hasFinalContent.value) return false
+  return !props.loading
+})
+
+watch(hasFinalSummary, (newVal) => {
   if (newVal) {
     stepsCollapsed.value = true
   }
@@ -192,6 +232,12 @@ const copyText = async (text) => {
 .bubble.has-steps {
   width: 100%;
   max-width: none;
+}
+
+.bubble.initial-bubble {
+  width: auto;
+  min-width: 120px;
+  max-width: 200px;
 }
 
 .server .bubble {
@@ -382,6 +428,125 @@ const copyText = async (text) => {
   animation: blink 1.2s infinite;
   vertical-align: middle;
   margin-left: 4px;
+}
+
+.initial-loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 12px;
+  min-height: 60px;
+}
+
+.initial-loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.initial-loading-content .loading-animation {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.initial-loading-content .typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  animation: typing-bounce 1.4s ease-in-out infinite;
+}
+
+.initial-loading-content .typing-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.initial-loading-content .typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.initial-loading-content .typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.initial-loading-content .loading-hint {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  animation: fade-pulse 2s ease-in-out infinite;
+}
+
+@keyframes typing-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-pulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.loading-progress-bar {
+  width: 100%;
+  height: 3px;
+  margin-top: 8px;
+  background: linear-gradient(90deg, 
+    rgba(59, 130, 246, 0.1) 0%, 
+    rgba(59, 130, 246, 0.15) 50%, 
+    rgba(59, 130, 246, 0.1) 100%
+  );
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 30%;
+  height: 100%;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(59, 130, 246, 0.6) 30%, 
+    rgba(96, 165, 250, 0.9) 50%, 
+    rgba(59, 130, 246, 0.6) 70%, 
+    transparent 100%
+  );
+  border-radius: 2px;
+  animation: progress-slide 1.8s ease-in-out infinite, progress-breathe 1.8s ease-in-out infinite;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.4), 0 0 4px rgba(96, 165, 250, 0.2);
+}
+
+@keyframes progress-slide {
+  0% {
+    left: -30%;
+  }
+  100% {
+    left: 100%;
+  }
+}
+
+@keyframes progress-breathe {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .loading-spinner-container {
