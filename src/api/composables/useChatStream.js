@@ -78,12 +78,15 @@ export function useChatStream() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
           ...(token && { 'Authorization': 'Bearer ' + token })
         },
         body: JSON.stringify(body),
         signal: abortController.signal,
         openWhenHidden: true,
-        async onopen(response) {
+        onopen(response) {
+          console.log('[SSE] 连接已建立, status:', response.status)
           if (response.status === 401) {
             store.dispatch('logout')
             router.push('/login')
@@ -94,73 +97,80 @@ export function useChatStream() {
           }
         },
       onmessage(msg) {
+        if (requestId !== currentRequestId) {
+          console.log('[SSE] 忽略旧请求的消息:', { requestId, currentRequestId })
+          return
+        }
+        
+        let payload
         try {
-          const payload = JSON.parse(msg.data)
-          const eventType = getEventTypeValue(payload.type)
-          const stage = getStageValue(payload.stage)
-          const eventData = payload.data
-          const seq = payload.sequenceNumber
-
-          console.log('[SSE] 收到消息:', {
-            rawType: payload.type,
-            rawStage: payload.stage,
-            eventType,
-            stage,
-            reactMode,
-            eventData,
-            sequenceNumber: seq
-          })
-
-          if (reactMode) {
-            if (eventType === EventTypeEnum.DATA) {
-              console.log('[ReAct] 处理事件:', { stage, eventData, seq, sessionId })
-              handleReActEvent(stage, eventData, aiMessageRef, onScroll, sessionId, seq)
-            } else if (eventType === EventTypeEnum.STOP) {
-              console.log('[ReAct] 对话完成')
-              finishGeneration(requestId)
-            }
-          } else {
-            if (eventType === EventTypeEnum.DATA && eventData !== null && eventData !== undefined) {
-              let contentToAdd = ''
-              if (typeof eventData === 'string') {
-                contentToAdd = eventData
-              } else if (typeof eventData === 'object') {
-                if (eventData.thinkContent && typeof eventData.thinkContent === 'string') {
-                  contentToAdd = eventData.thinkContent
-                } else if (eventData.content && typeof eventData.content === 'string') {
-                  contentToAdd = eventData.content
-                } else if (eventData.text && typeof eventData.text === 'string') {
-                  contentToAdd = eventData.text
-                } else if (eventData.result && typeof eventData.result === 'string') {
-                  contentToAdd = eventData.result
-                } else {
-                  console.log('[Chat] 未知的对象格式 eventData:', eventData)
-                }
-              }
-              if (contentToAdd) {
-                aiMessageRef.content = aiMessageRef.content + contentToAdd
-                nextTick(() => {
-                  if (onScroll) onScroll()
-                })
-              }
-            } else if (eventType === EventTypeEnum.STOP) {
-              finishGeneration(requestId)
-            } else if (eventType === EventTypeEnum.PARAM) {
-              console.log('Param event:', eventData)
-            }
-          }
+          payload = JSON.parse(msg.data)
         } catch (e) {
-          console.warn('JSON parse error:', e)
+          console.warn('[SSE] JSON parse error:', e, 'raw:', msg.data)
+          return
+        }
+        
+        const eventType = getEventTypeValue(payload.type)
+        const stage = getStageValue(payload.stage)
+        const eventData = payload.data
+        const seq = payload.sequenceNumber
+
+        console.log('[SSE] 收到消息:', {
+          rawType: payload.type,
+          eventType,
+          stage,
+          seq,
+          timestamp: Date.now()
+        })
+
+        if (reactMode) {
+          if (eventType === EventTypeEnum.DATA) {
+            handleReActEvent(stage, eventData, aiMessageRef, onScroll, sessionId, seq)
+          } else if (eventType === EventTypeEnum.STOP) {
+            console.log('[ReAct] 收到STOP事件，结束生成')
+            finishGeneration(requestId)
+          }
+        } else {
+          if (eventType === EventTypeEnum.DATA && eventData !== null && eventData !== undefined) {
+            let contentToAdd = ''
+            if (typeof eventData === 'string') {
+              contentToAdd = eventData
+            } else if (typeof eventData === 'object') {
+              if (eventData.thinkContent && typeof eventData.thinkContent === 'string') {
+                contentToAdd = eventData.thinkContent
+              } else if (eventData.content && typeof eventData.content === 'string') {
+                contentToAdd = eventData.content
+              } else if (eventData.text && typeof eventData.text === 'string') {
+                contentToAdd = eventData.text
+              } else if (eventData.result && typeof eventData.result === 'string') {
+                contentToAdd = eventData.result
+              }
+            }
+            if (contentToAdd) {
+              aiMessageRef.content = aiMessageRef.content + contentToAdd
+              nextTick(() => {
+                if (onScroll) onScroll()
+              })
+            }
+          } else if (eventType === EventTypeEnum.STOP) {
+            console.log('[Chat] 收到STOP事件，结束生成')
+            finishGeneration(requestId)
+          }
         }
       },
       onerror(err) {
-        console.error('SSE connection error:', err)
-        finishGeneration(requestId)
+        console.error('[SSE] 连接错误:', err)
+        if (requestId === currentRequestId) {
+          finishGeneration(requestId)
+        }
         throw err
       },
       onclose() {
-        console.log('[SSE] 连接关闭, generating:', generating.value)
-        finishGeneration(requestId)
+        console.log('[SSE] 连接关闭, requestId:', requestId, 'currentRequestId:', currentRequestId, 'generating:', generating.value)
+        if (requestId === currentRequestId && generating.value) {
+          console.log('[SSE] 连接异常关闭，结束生成')
+          finishGeneration(currentRequestId)
+        }
       }
     })
   } catch (error) {
@@ -244,74 +254,48 @@ export function useChatStream() {
   }
 
   const handleReActEvent = (stage, eventData, aiMessageRef, onScroll, sessionId, seq) => {
-    console.log('[ReAct] handleReActEvent:', { stage, seq, sessionId, eventData })
-
     if (stage === null || stage === undefined) {
-      console.warn('[ReAct] stage 为空，跳过事件')
       return
     }
 
     const hasSeq = seq !== null && seq !== undefined
-    let shouldSkip = false
-
     if (hasSeq) {
       const dedupKey = `${sessionId}-${stage}-${seq}`
       if (recentEvents.has(dedupKey)) {
-        console.log('[ReAct] 事件已处理过，跳过:', { seq, dedupKey })
-        shouldSkip = true
-      } else {
-        recentEvents.set(dedupKey, Date.now())
+        return
       }
-    } else {
-      const countKey = `${sessionId}-${stage}`
-      const currentCount = processedEventCount.get(countKey) || 0
-      processedEventCount.set(countKey, currentCount + 1)
-      console.log('[ReAct] 无序列号的事件, stage:', stage, 'count:', currentCount + 1)
-    }
-
-    if (shouldSkip) return
-
-    if (seq !== null && seq !== undefined) {
-      lastProcessedSeq = Math.max(lastProcessedSeq, seq)
+      recentEvents.set(dedupKey, Date.now())
+      if (recentEvents.size > 1000) {
+        const now = Date.now()
+        for (const [key, time] of recentEvents) {
+          if (now - time > 60000) recentEvents.delete(key)
+        }
+      }
     }
 
     processEvent(stage, eventData, aiMessageRef, seq)
     
     nextTick(() => {
-      console.log('[ReAct] DOM 更新后，steps 长度:', aiMessageRef.steps?.length)
       if (onScroll) onScroll()
     })
   }
 
   const processEvent = (stage, eventData, aiMessageRef, seq) => {
-    console.log('[ReAct] processEvent 开始:', {
-      stage,
-      seq,
-      eventDataKeys: eventData ? Object.keys(eventData) : 'null',
-      eventData,
-      currentStepsLength: aiMessageRef.steps?.length || 0
-    })
-
     if (!aiMessageRef.steps) {
-      console.log('[ReAct] 初始化 steps 数组')
       aiMessageRef.steps = []
     }
     if (!Array.isArray(aiMessageRef.steps)) {
-      console.log('[ReAct] steps 不是数组，重新初始化')
       aiMessageRef.steps = []
     }
 
     if (stage === 3) {
-      console.log('[ReAct] 处理最终总结（stage 3）:', eventData)
       let finalContent = ''
       if (eventData && typeof eventData === 'object') {
         finalContent = eventData.finalResult || eventData.result || eventData.content || ''
       } else if (typeof eventData === 'string') {
         finalContent = eventData
       }
-      console.log('[ReAct] 最终总结内容:', { finalContent, length: finalContent.length })
       aiMessageRef.content = finalContent
-      console.log('[ReAct] 最终总结设置后 content:', aiMessageRef.content)
       return
     }
 
@@ -323,7 +307,6 @@ export function useChatStream() {
     try {
       switch (stage) {
         case 0:
-          console.log('[ReAct] 处理子任务规划（stage 0）:', eventData)
           newStep.type = 'plan'
           newStep.title = '规划子任务'
           newStep.index = eventData?.index ?? 0
@@ -336,7 +319,6 @@ export function useChatStream() {
           break
 
         case 1:
-          console.log('[ReAct] 处理策略思考（stage 1）:', eventData)
           newStep.type = 'thinking'
           newStep.title = '思考策略'
           newStep.thinkContent = eventData?.thinkContent ?? ''
@@ -345,7 +327,6 @@ export function useChatStream() {
           break
 
         case 2:
-          console.log('[ReAct] 处理行动结果（stage 2）:', eventData)
           newStep.type = 'action'
           newStep.title = '执行行动'
           newStep.success = eventData?.success ?? false
@@ -356,12 +337,10 @@ export function useChatStream() {
           break
 
         default:
-          console.warn('[ReAct] 未知的 stage:', stage)
           return
       }
 
       if (!newStep.type) {
-        console.warn('[ReAct] 步骤类型未设置，跳过添加:', { stage, newStep })
         return
       }
 
@@ -372,25 +351,14 @@ export function useChatStream() {
 
       if (existingIndex === -1) {
         aiMessageRef.steps.push(newStep)
-        console.log('[ReAct] push 后 steps 长度:', aiMessageRef.steps.length)
-        
         aiMessageRef.steps.sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))
-        console.log('[ReAct] sort 后 steps 长度:', aiMessageRef.steps.length)
-      } else {
-        console.log('[ReAct] 步骤已存在，跳过添加:', newStep.sequenceNumber)
       }
 
       const actionCount = aiMessageRef.steps.filter(s => s.type === 'action').length
       aiMessageRef.stepCount = actionCount
 
-      console.log('[ReAct] processEvent 完成:', {
-        stepsCount: aiMessageRef.steps.length,
-        stepCount: aiMessageRef.stepCount,
-        contentLength: aiMessageRef.content?.length || 0
-      })
-
     } catch (error) {
-      console.error('[ReAct] 处理事件时出错:', { stage, eventData, seq, error, errorStack: error.stack })
+      console.error('[ReAct] 处理事件时出错:', error)
     }
   }
 

@@ -30,7 +30,21 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(new RegExp(`^${VITE_APP_BASE_API}`), ''),
           secure: false,
-          ws: true
+          ws: true,
+          configure: (proxy) => {
+            proxy.on('proxyReq', (proxyReq, req) => {
+              if (req.url && (req.url.includes('/agent/chat') || req.url.includes('/agent/task'))) {
+                proxyReq.setHeader('Cache-Control', 'no-cache')
+                proxyReq.setHeader('X-Accel-Buffering', 'no')
+              }
+            })
+            proxy.on('proxyRes', (proxyRes) => {
+              if (proxyRes.headers['content-type']?.includes('text/event-stream')) {
+                proxyRes.headers['cache-control'] = 'no-cache, no-transform'
+                proxyRes.headers['x-accel-buffering'] = 'no'
+              }
+            })
+          }
         }
       }
     },
