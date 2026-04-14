@@ -7,6 +7,25 @@
 
 ---
 
+## 项目展示
+
+### 首页界面
+
+<img src="./src/assets/image/index.png" alt="首页界面" width="80%">
+
+### 默认对话界面
+
+<img src="./src/assets/image/default.png" alt="默认对话界面" width="80%">
+
+### Task模式展示
+
+<table>
+  <tr>
+    <td><img src="./src/assets/image/task%20mode1.png" alt="Task模式1" width="100%"></td>
+    <td><img src="./src/assets/image/task%20mode2.png" alt="Task模式2" width="100%"></td>
+  </tr>
+</table>
+
 ## 核心架构
 
 智瞳AI前端是基于 `Vue 3` 的现代化单页应用（SPA），使用了 `Vite 6` 作为构建工具，具备高效的开发体验和性能。整个架构围绕着组件化、响应式数据流和与后端服务的实时通信来设计。
